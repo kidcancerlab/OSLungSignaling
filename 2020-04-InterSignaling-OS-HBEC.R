@@ -31,11 +31,20 @@ cx <- RenameIdents(cx, `0` = "HBEC-Stim", `2` = "HBEC-Unstim", `3` = "HBEC-Stim"
 
 target.genes <- find_tar_genes(cx, id1 = "OS-Stim", "OS-Unstim")
 
-LRT.analysis <- find_ligands(cx, target.genes, senders = c("HBEC-Stim", "HBEC-Unstim"), 
-                            receiver = "OS-Stim", rec_pct = 0.07, stringency = "strict")
+LRT.analysis <- find_ligands(cx, 
+                             target.genes, 
+                             senders = c("HBEC-Stim", "HBEC-Unstim"), 
+                             receiver = "OS-Stim", 
+                             rec_pct = 0.07, 
+                             stringency = "strict")
 
-LRT.analysis.2 <- find_ligands(cx, target.genes, senders = c("HBEC-Stim", "HBEC-Unstim"), 
-                            send_pct = 0.2, receiver = "OS-Stim", rec_pct = 0.07, stringency = "strict")
+LRT.analysis.2 <- find_ligands(cx, 
+                               target.genes, 
+                               senders = c("HBEC-Stim", "HBEC-Unstim"), 
+                               send_pct = 0.2, 
+                               receiver = "OS-Stim", 
+                               rec_pct = 0.07, 
+                               stringency = "strict")
 
 plot_complex_heatmap(LRT.analysis, grid_color_high = "steelblue4")
 plot_complex_heatmap(LRT.analysis.2, grid_color_high = "steelblue4")
