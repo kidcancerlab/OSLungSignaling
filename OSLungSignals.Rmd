@@ -1,0 +1,132 @@
+---
+title: "Osteosarcoma - lung epithelial interactions"
+author: "Ryan Roberts"
+date: March 2022
+output: knitrBootstrap::bootstrap_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      cache = TRUE,
+                      fig.height = 10,
+                      fig.width = 20,
+                      dpi = 300,
+                      bootstrap.show.code = FALSE,
+                      bootstrap.show.output = FALSE,
+                      bootstrap.show.message = FALSE)
+```
+
+
+
+# Osteosarcoma - lung epithelial interactions
+
+## Goals:
+
+Generate figures for the tumor-epithelial paracrine signaling, self-seeding mechanisms paper
+
+## Samples:
+
+placeholder
+
+## Approach
+
+placeholder
+
+# Workflow
+
+## Load libraries
+```{r libraries, cache=FALSE, eval=TRUE}
+library(tidyverse)
+theme_set(theme_classic())
+theme_update(plot.title = element_text(hjust = 0.5))
+library(rrrSingleCellUtils)
+library(Seurat)
+library(pzfx)
+library(ggbeeswarm)
+```
+
+## Load and organize co-culture data
+```{r , eval=TRUE}
+scrna_path <- "C:/Users/rxr014/OneDrive - Nationwide Children's Hospital/BIScratch/"
+deets_cocx <- tribble(
+    ~id, ~max_count, ~max_percent_mt,
+    "S0001", 16000, 14,
+    "S0005", 16000, 14
+)
+cocx <- list()
+for(s in deets_cocx$id) {
+    tenx_load_qc(paste(
+        scrna_path,
+        s,
+        "/filtered_feature_bc_matrix/",
+        sep = ""
+    ))
+}
+```
+
+## Import and graph transwell data
+```{r}
+paper_path <- "C:/Users/rxr014/OneDrive - Nationwide Children's Hospital/Papers/2017 self seeding/"
+migration_tables <- tribble(
+    ~cell_line, ~table_cytokine, ~table_conditioned, ~met_potential,
+    "OS-17", "OS-17 Migration", "OS-17 migration assay (6.14.18) to inhibitors", "metastatic",
+    "143B", "143B Migration", "143B migration (2018-06-01) to inhibitors", "metastatic",
+    "K7M2", "K7M2 Migration", "K7M2 migration (2018-06-26) to inhibitors", "metastatic",
+    "OS-25", "OS-25 Migration", "", "non-metastatic",
+    "SaOS2", "", "SaOS2 migration (2018-07-11) to inhibitors", "non-metastatic",
+    "MG63", "", "MG-63 migration (#1 2018-05-25) to inhibitors", "non-metastatic"
+)
+cytokine_migration <- list()
+cytokine_plots <- list()
+for(s in migration_tables$table_cytokine) {
+    if(s != "") {
+        c <- migration_tables$cell_line[migration_tables$table_cytokine == s]
+        cytokine_migration[[c]] <-
+            as_tibble(
+                read_pzfx(paste(paper_path, "Figures for paper.xml", sep = ""),
+                    table = s,
+                )
+            ) %>%
+            gather("condition", "cells")
+        cytokine_migration[[c]]$condition <- factor(
+            cytokine_migration[[c]]$condition,
+            levels = c("plain RPMI", "1% FBS", "IL6", "IL8",
+                "Oncostatin M", "SDF-1")
+        )
+
+        cytokine_plots[[c]] <-
+            ggplot(cytokine_migration[[c]], aes(condition, cells)) +
+                geom_beeswarm(
+                    size = 4,
+                    color = "gray65",
+                    cex = 2
+                ) +
+                stat_summary(
+                    fun.data = mean_se,
+                    geom = "errorbar", 
+                    width = 0.3, 
+                    size = 1
+                ) +
+                stat_summary(
+                    fun = mean, 
+                    geom = "crossbar",
+                    width = 0.5,
+                    size = 0.5
+                ) +
+                ggtitle(c)
+        print(cytokine_plots[[c]])
+    }
+}
+
+
+
+```
+
+
+
+
+
+# Conclusions
+
+placeholder
+ 
