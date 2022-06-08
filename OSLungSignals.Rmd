@@ -47,79 +47,163 @@ library(ggbeeswarm)
 
 ## Load and organize co-culture data
 ```{r , eval=TRUE}
-scrna_path <- "C:/Users/rxr014/OneDrive - Nationwide Children's Hospital/BIScratch/"
+scrna_path <- "data/"
 deets_cocx <- tribble(
     ~id, ~max_count, ~max_percent_mt,
     "S0001", 16000, 14,
-    "S0005", 16000, 14
-)
-cocx <- list()
-for(s in deets_cocx$id) {
-    tenx_load_qc(paste(
-        scrna_path,
-        s,
-        "/filtered_feature_bc_matrix/",
-        sep = ""
-    ))
-}
+    "S0005", 16000, 14)
+
+cocx <- lapply(deets_cocx$id, function(i) {
+    tenx_load_qc(paste(scrna_path,
+                       i,
+                       "/filtered_feature_bc_matrix/",
+                       sep = ""),
+                 violin_plot = FALSE)
+})
+names(cocx) <- deets_cocx$id
 ```
 
-## Import and graph transwell data
-```{r}
-paper_path <- "C:/Users/rxr014/OneDrive - Nationwide Children's Hospital/Papers/2017 self seeding/"
+## Figure 4: Import and graph transwell data
+Save data objects with metadata to data/
+Compare to media only
+
+cytokine 
+condition media migration
+```{r plotCytokines, eval=TRUE}
+paper_path <- "../"
 migration_tables <- tribble(
-    ~cell_line, ~table_cytokine, ~table_conditioned, ~met_potential,
-    "OS-17", "OS-17 Migration", "OS-17 migration assay (6.14.18) to inhibitors", "metastatic",
-    "143B", "143B Migration", "143B migration (2018-06-01) to inhibitors", "metastatic",
-    "K7M2", "K7M2 Migration", "K7M2 migration (2018-06-26) to inhibitors", "metastatic",
-    "OS-25", "OS-25 Migration", "", "non-metastatic",
-    "SaOS2", "", "SaOS2 migration (2018-07-11) to inhibitors", "non-metastatic",
-    "MG63", "", "MG-63 migration (#1 2018-05-25) to inhibitors", "non-metastatic"
+    ~cell_line, ~table_name, ~met_potential, ~type,
+    "OS-17", "OS-17 Migration", "metastatic", "to_cytokine",
+    "143B", "143B Migration", "metastatic", "to_cytokine",
+    "K7M2", "K7M2 Migration", "metastatic", "to_cytokine",
+    "OS-25", "OS-25 Migration", "non-metastatic", "to_cytokine",
+    "OSCA8", "OSCA8 Migration", "", "to_cytokine",
+    "OS-17", "OS-17 migration assay (6.14.18) to inhibitors", "metastatic", "to_inhibitors",
+    "143B", "143B migration (2018-06-01) to inhibitors", "metastatic", "to_inhibitors",
+    "K7M2", "K7M2 migration (2018-06-26) to inhibitors", "metastatic", "to_inhibitors",
+    "SaOS2", "SaOS2 migration (2018-07-11) to inhibitors", "non-metastatic", "to_inhibitors",
+    "MG63", "MG-63 migration (#1 2018-05-25) to inhibitors", "non-metastatic", "to_inhibitors",
+    "OS-17", "OS-17 migration assay (6.14.18) to conditioned media", "metastatic", "to_conditioned_media",
+    "143B", "143B migration (2018-06-01) to conditioned media", "metastatic", "to_conditioned_media",
+    "K7M2", "K7M2 migration (2018-06-26) to conditioned media", "metastatic", "to_conditioned_media",
+    "MG63", "MG-63 migration (#1 2018-05-25) to conditioned media", "non-metastatic", "to_conditioned_media",
+    "SaOS2", "SaOS2 migration (2018-07-11) to conditioned media", "non-metastatic", "to_conditioned_media",
 )
-cytokine_migration <- list()
-cytokine_plots <- list()
-for(s in migration_tables$table_cytokine) {
-    if(s != "") {
-        c <- migration_tables$cell_line[migration_tables$table_cytokine == s]
-        cytokine_migration[[c]] <-
-            as_tibble(
-                read_pzfx(paste(paper_path, "Figures for paper.xml", sep = ""),
-                    table = s,
-                )
-            ) %>%
-            gather("condition", "cells")
-        cytokine_migration[[c]]$condition <- factor(
-            cytokine_migration[[c]]$condition,
-            levels = c("plain RPMI", "1% FBS", "IL6", "IL8",
-                "Oncostatin M", "SDF-1")
-        )
+# get rid of SDF-1 (CXCL12) and Oncostatin M from "to_cytokine" datasets
+# CXCL8 is IL8
 
-        cytokine_plots[[c]] <-
-            ggplot(cytokine_migration[[c]], aes(condition, cells)) +
-                geom_beeswarm(
-                    size = 4,
-                    color = "gray65",
-                    cex = 2
-                ) +
-                stat_summary(
-                    fun.data = mean_se,
-                    geom = "errorbar", 
-                    width = 0.3, 
-                    size = 1
-                ) +
-                stat_summary(
-                    fun = mean, 
-                    geom = "crossbar",
-                    width = 0.5,
-                    size = 0.5
-                ) +
-                ggtitle(c)
-        print(cytokine_plots[[c]])
+for (i in seq_len(nrow(migration_tables))) {
+    cell_line <- migration_tables$cell_line[i]
+    table_name <- migration_tables$table_name[i]
+    data_type <- migration_tables$type[i]
+
+    dataset <-
+        as_tibble(read_pzfx(paste(paper_path,
+                                  "Figures for paper.xml",
+                                  sep = ""),
+                            table = table_name)
+        ) %>%
+        gather("condition", "cells") %>%
+        mutate(description = table_name,
+               met_potential = migration_tables$met_potential[i])
+
+    if (data_type == "to_cytokine") {
+        dataset <- dataset %>%
+            filter(condition != "CXCL12" & condition != "OSM") %>%
+            mutate(condition =
+                       str_replace(condition, "^Media$", "Media only") %>%
+                       str_replace("1% FBS", "Media + FBS") %>%
+                       str_replace("CXCL8", "IL8")) %>%
+            mutate(condition = factor(condition, levels = c("Media only",
+                                                            "Media + FBS",
+                                                            "IL6",
+                                                            "IL8")))
+    } else if (data_type == "to_inhibitors") {
+        dataset <- dataset %>%
+            mutate(condition =
+                       str_replace(condition, "^Media$", "Media only") %>%
+                       str_replace("Cond Media", "Cond. media (C.M.)") %>%
+                       str_replace("CM \\+ sc144", "C.M. + SC144") %>%
+                       str_replace("CM \\+ ladarixin", "C.M. + DF2156A") %>%
+                       str_replace("CM \\+ both", "C.M. + both")) %>%
+            mutate(condition = factor(condition, levels = c('Media only',
+                                                            '1% FBS',
+                                                            'Cond. media (C.M.)',
+                                                            'C.M. + SC144',
+                                                            'C.M. + DF2156A',
+                                                            'C.M. + both')))
+    } else if (data_type == "to_conditioned_media") {
+        dataset <- dataset %>%
+            mutate(condition =
+                       str_replace(condition, "^Media$", "Media only") %>%
+                       str_replace("1% FBS", "Media + FBS") %>%
+                       str_replace("Cond Media", "Cond. media")) %>%
+            mutate(condition = factor(condition, levels = c("Media only",
+                                                            "Media + FBS",
+                                                            "Cond. media")))
     }
+
+    cmp_group <- if_else(data_type == "to_conditioned_media",
+                         true = "Media . FBS",
+                         false = "Media only")
+    aov_test <- aov(cells ~ condition, data = dataset) %>%
+        TukeyHSD(.)
+    aov_test <- aov_test$condition %>%
+        as.data.frame() %>%
+        rownames_to_column("comparison") %>%
+        as_tibble() %>%
+        filter(grepl(cmp_group, comparison)) %>%
+        mutate(comparison = str_remove(comparison, paste0("-*", cmp_group, "-*"))) %>%
+        rename(p_adj = `p adj`) %>%
+        filter(p_adj <= 0.05)
+
+    obj_name <- paste0(cell_line, "_", data_type)
+    assign(obj_name, dataset)
+    saveRDS(obj_name, paste0("data/robj/", obj_name, ".rds"))
+
+    plot_name <-
+        ggplot(dataset, aes(condition, cells)) +
+        geom_beeswarm(
+            size = 2,
+            color = "gray65",
+            cex = 2
+        ) +
+        stat_summary(
+            fun.data = mean_se,
+            geom = "errorbar", 
+            width = 0.3, 
+            size = 1
+        ) +
+        stat_summary(
+            fun = mean, 
+            geom = "crossbar",
+            width = 0.5,
+            size = 0.5
+        ) +
+        labs(x = "",
+             y = "Cells",
+             title = cell_line) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+    if (nrow(aov_test) > 0) {
+        plot_name <- plot_name +
+            geom_text(data = aov_test,
+                      aes(x = comparison,
+                          y = max(dataset$cells) * 1.1,
+                          label = paste0("p=", sprintf("%.2e", p_adj))),
+                      size = 3)
+    }
+
+    ggsave(paste0("data/output/figures/",
+                  cell_line,
+                  "_",
+                  data_type,
+                  ".png"),
+           width = 5,
+           height = 5,
+           plot = plot_name)
+    print(plot_name)
 }
-
-
-
 ```
 
 
