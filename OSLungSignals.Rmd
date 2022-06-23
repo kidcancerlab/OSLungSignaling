@@ -45,6 +45,20 @@ library(pzfx)
 library(ggbeeswarm)
 ```
 
+## Helper functions
+```{r}
+process_seurat <- function(obj, ...) {
+    obj %>%
+        NormalizeData(verbose = FALSE) %>%
+        FindVariableFeatures(verbose = FALSE) %>%
+        ScaleData(verbose = FALSE) %>%
+        RunPCA(verbose = FALSE) %>%
+        RunUMAP(dims = 1:10, verbose = FALSE) %>%
+        FindNeighbors(verbose = FALSE) %>%
+        FindClusters(verbose = FALSE, ...)
+}
+```
+
 ## Load and organize co-culture data
 ```{r , eval=TRUE}
 scrna_path <- "data/"
@@ -53,24 +67,102 @@ deets_cocx <- tribble(
     "S0001", 16000, 14,
     "S0005", 16000, 14)
 
-cocx <- lapply(deets_cocx$id, function(i) {
-    tenx_load_qc(paste(scrna_path,
-                       i,
-                       "/filtered_feature_bc_matrix/",
-                       sep = ""),
-                 violin_plot = FALSE)
+cocx <- lapply(seq_len(nrow(deets_cocx)), function(i) {
+    test <- tenx_load_qc(paste0(scrna_path,
+                        deets_cocx$id[i],
+                        "/filtered_feature_bc_matrix/"),
+                 violin_plot = FALSE) %>%
+        subset(nCount_RNA < deets_cocx$max_count[i] &
+                   percent.mt < deets_cocx$max_percent_mt[i]) %>%
+        process_seurat()
 })
 names(cocx) <- deets_cocx$id
 ```
+
+## Figure 2: Human tissue in lung
+```{r plotHsTissue, eval=TRUE}
+table_table <- tribble(
+    ~label,              ~table_name,
+    "Primary vs None",   "Primary vs None",
+    "Amputation vs None","Amputation vs None"
+)
+file_name <- "../Source Data/Primary vs None.xml"
+perc_human_cutoff <- 0.1
+
+level_orders <- list(`Primary vs None` = c("Primary", "No Primary"),
+                     `Amputation vs None` = c("No Amp, Early Euth", "Early Amp, Late Euth", "No Amp, Late Euth"))
+
+for (i in seq_len(nrow(table_table))) {
+    label <- table_table$label[i]
+    table_name <- table_table$table_name[i]
+
+    dataset <-
+        as_tibble(read_pzfx(file_name,
+                            table = table_name)
+        ) %>%
+        pivot_longer(cols = everything(),
+                     names_to = "condition",
+                     values_to = "perc_human") %>%
+        filter(!is.na(perc_human)) %>%
+        mutate(condition = factor(condition, levels = level_orders[[label]]))
+
+    n_greater_table <-
+        dataset %>%
+        group_by(condition) %>%
+        summarize(value = paste0(n_greater = sum(perc_human > perc_human_cutoff),
+                                 "/",
+                                 n()))
+
+    dataset_p <-
+        pairwise.t.test(dataset$perc_human,
+                        dataset$condition,
+                        p.adjust.method = "bonf")$p.value %>%
+        as.data.frame() %>%
+        rownames_to_column("group_a") %>%
+        rename(p = level_orders[[label]][1]) %>%
+        select(group_a, p) %>%
+        mutate(p = format(round(p, 3), nsmall = 3))
+
+    ggplot(dataset,
+           aes(x = condition, y = perc_human)) +
+        geom_boxplot(outlier.alpha = 0) +
+        geom_beeswarm(shape = 15,
+                      cex = 3) +
+        geom_hline(yintercept = perc_human_cutoff,
+                   color = "gray",
+                   linetype = "dashed") +
+        geom_text(data = n_greater_table,
+                  aes(x = condition,
+                      y = max(dataset$perc_human * 1.1),
+                      label = value)) +
+        geom_text(data = dataset_p,
+                  aes(x = group_a,
+                      y = max(dataset$perc_human * 1.05),
+                      label = paste0("p=", p)),
+                  size = 3) +
+        labs(x = "",
+             y = "% Human Tissue\n(in lung)",
+             title = label) +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+    ggsave(paste0("data/output/figures/figure_2_",
+                  str_replace_all(label, " ", "_"),
+                  ".png"),
+           width = 4,
+           height = 5)
+
+}
+
+```
+
+
 
 ## Figure 4: Import and graph transwell data
 Save data objects with metadata to data/
 Compare to media only
 
-cytokine 
-condition media migration
 ```{r plotCytokines, eval=TRUE}
-paper_path <- "../"
+paper_path <- "../Source Data/"
 migration_tables <- tribble(
     ~cell_line, ~table_name, ~met_potential, ~type,
     "OS-17", "OS-17 Migration", "metastatic", "to_cytokine",
@@ -194,7 +286,7 @@ for (i in seq_len(nrow(migration_tables))) {
                       size = 3)
     }
 
-    ggsave(paste0("data/output/figures/",
+    ggsave(paste0("data/output/figures/figure_4_",
                   cell_line,
                   "_",
                   data_type,
@@ -203,6 +295,8 @@ for (i in seq_len(nrow(migration_tables))) {
            height = 5,
            plot = plot_name)
     print(plot_name)
+
+    rm(list = obj_name, plot_name)
 }
 ```
 
