@@ -59,6 +59,11 @@ process_seurat <- function(obj, ...) {
 }
 ```
 
+## Get list of data sources
+```{r}
+data_sources <- readxl::read_excel("C:/Users/rxr014/OneDrive - Nationwide Children's Hospital/Papers/Active Manuscripts/Self seeding and IL6-IL1 paracrine loop/Source Data/Locations and Names of Data.xlsx")
+```
+
 ## Load and organize co-culture data
 ```{r , eval=TRUE}
 scrna_path <- "data/"
@@ -157,59 +162,74 @@ for (i in seq_len(nrow(table_table))) {
 
 
 
-## Figure 4: Import and graph transwell data
+## Figure 4: Import transwell data and create data object
 Save data objects with metadata to data/
 Compare to media only
 
 ```{r plotCytokines, eval=TRUE}
 paper_path <- "../Source Data/"
-migration_tables <- tribble(
+
+migration <- list()
+
+migration$cytokine <- list()
+migration$cond_media <- list()
+
+migration$cytokine$source <- tribble(
     ~cell_line, ~table_name, ~met_potential, ~type,
     "OS-17", "OS-17 Migration", "metastatic", "to_cytokine",
     "143B", "143B Migration", "metastatic", "to_cytokine",
     "K7M2", "K7M2 Migration", "metastatic", "to_cytokine",
     "OS-25", "OS-25 Migration", "non-metastatic", "to_cytokine",
-    "OSCA8", "OSCA8 Migration", "", "to_cytokine",
-    "OS-17", "OS-17 migration assay (6.14.18) to inhibitors", "metastatic", "to_inhibitors",
-    "143B", "143B migration (2018-06-01) to inhibitors", "metastatic", "to_inhibitors",
-    "K7M2", "K7M2 migration (2018-06-26) to inhibitors", "metastatic", "to_inhibitors",
-    "SaOS2", "SaOS2 migration (2018-07-11) to inhibitors", "non-metastatic", "to_inhibitors",
-    "MG63", "MG-63 migration (#1 2018-05-25) to inhibitors", "non-metastatic", "to_inhibitors",
-    "OS-17", "OS-17 migration assay (6.14.18) to conditioned media", "metastatic", "to_conditioned_media",
-    "143B", "143B migration (2018-06-01) to conditioned media", "metastatic", "to_conditioned_media",
-    "K7M2", "K7M2 migration (2018-06-26) to conditioned media", "metastatic", "to_conditioned_media",
-    "MG63", "MG-63 migration (#1 2018-05-25) to conditioned media", "non-metastatic", "to_conditioned_media",
-    "SaOS2", "SaOS2 migration (2018-07-11) to conditioned media", "non-metastatic", "to_conditioned_media",
-)
-# get rid of SDF-1 (CXCL12) and Oncostatin M from "to_cytokine" datasets
-# CXCL8 is IL8
+    "OSCA8", "OSCA8 Migration", "", "to_cytokine")
 
-for (i in seq_len(nrow(migration_tables))) {
-    cell_line <- migration_tables$cell_line[i]
-    table_name <- migration_tables$table_name[i]
-    data_type <- migration_tables$type[i]
+migration$cond_media$source <- tribble(
+    ~cell_line, ~table_name, ~met_potential, ~type,
+    "OS-17", "OS-17 migration assay (6.14.18) to inhibitors",
+        "metastatic", "to_inhibitors",
+    "143B", "143B migration (2018-06-01) to inhibitors",
+        "metastatic", "to_inhibitors",
+    "K7M2", "K7M2 migration (2018-06-26) to inhibitors",
+        "metastatic", "to_inhibitors",
+    "SaOS2", "SaOS2 migration (2018-07-11) to inhibitors",
+        "non-metastatic", "to_inhibitors",
+    "MG63", "MG-63 migration (#1 2018-05-25) to inhibitors",
+        "non-metastatic", "to_inhibitors")
 
-    dataset <-
-        as_tibble(read_pzfx(paste(paper_path,
-                                  "Figures for paper.xml",
-                                  sep = ""),
-                            table = table_name)
-        ) %>%
+migration$cytokine$data <- lapply(
+    migration$cytokine$source$table_name, 
+    function(x) {
+        as_tibble(read_pzfx(
+            paste0(paper_path, "Figures for paper.xml"),
+            table = x)) %>%
         gather("condition", "cells") %>%
-        mutate(description = table_name,
-               met_potential = migration_tables$met_potential[i])
+        mutate(
+            description = x,
+            met_potential = migration$cytokine$source$met_potential[
+                migration$cytokine$source$table_name == x]) %>%
+        filter(condition != "CXCL12" & condition != "OSM") %>%
+        mutate(condition =
+            str_replace(condition, "^Media$", "Media") %>%
+            str_replace("1% FBS", "FBS")) %>%
+        mutate(condition = factor(condition, 
+            levels = c("Media", "FBS", "IL6", "IL8")))
+    })
+names(migration$cytokine$data) <- migration$cytokine$source$cell_line
 
-    if (data_type == "to_cytokine") {
-        dataset <- dataset %>%
-            filter(condition != "CXCL12" & condition != "OSM") %>%
-            mutate(condition =
-                       str_replace(condition, "^Media$", "Media only") %>%
-                       str_replace("1% FBS", "Media + FBS") %>%
-                       str_replace("CXCL8", "IL8")) %>%
-            mutate(condition = factor(condition, levels = c("Media only",
-                                                            "Media + FBS",
-                                                            "IL6",
-                                                            "IL8")))
+migration$cond_media$data <- lapply(
+    migration$cond_media$source$table_name,
+    function(x) {
+        as_tibble(read_pzfx(
+            paste0(paper_path, "Figures for paper.xml"),
+            table = x)) %>%
+        gather("condition", "cells") %>%
+        mutate(description = x,
+            met_potential = migration$cond_media$source$met_potential[
+                migration$cond_media$source$table_name == x])
+        ))
+)
+        if (data_type == "to_cytokine") {
+            dataset <- dataset %>%
+            
     } else if (data_type == "to_inhibitors") {
         dataset <- dataset %>%
             mutate(condition =
