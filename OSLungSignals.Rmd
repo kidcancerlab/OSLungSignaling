@@ -47,7 +47,7 @@ library(ggbeeswarm)
 
 ## Load and organize co-culture data
 ```{r , eval=TRUE}
-scrna_path <- "C:/Users/rxr014/OneDrive - Nationwide Children's Hospital/BIScratch/"
+scrna_path <- "D:/OneDrive - Nationwide Children's Hospital/BIScratch/"
 deets_cocx <- tribble(
     ~id, ~max_count, ~max_percent_mt,
     "S0001", 16000, 14,
@@ -65,8 +65,8 @@ for(s in deets_cocx$id) {
 ```
 
 ## Import and graph transwell data
-```{r}
-paper_path <- "C:/Users/rxr014/OneDrive - Nationwide Children's Hospital/Papers/2017 self seeding/"
+```{r transwells}
+paper_path <- "D:/OneDrive - Nationwide Children's Hospital/Papers/2017 self seeding/"
 migration_tables <- tribble(
     ~cell_line, ~table_cytokine, ~table_conditioned, ~met_potential,
     "OS-17", "OS-17 Migration", "OS-17 migration assay (6.14.18) to inhibitors", "metastatic",
@@ -90,8 +90,8 @@ for(s in migration_tables$table_cytokine) {
             gather("condition", "cells")
         cytokine_migration[[c]]$condition <- factor(
             cytokine_migration[[c]]$condition,
-            levels = c("plain RPMI", "1% FBS", "IL6", "IL8",
-                "Oncostatin M", "SDF-1")
+            levels = c("Media", "1% FBS", "IL6", "CXCL8",
+                "OSM", "CXCL12")
         )
 
         cytokine_plots[[c]] <-
@@ -113,7 +113,8 @@ for(s in migration_tables$table_cytokine) {
                     width = 0.5,
                     size = 0.5
                 ) +
-                ggtitle(c)
+                theme(axis.text.x = element_text(angle = 60, hjust = 1))
+                #labs()
         print(cytokine_plots[[c]])
     }
 }
