@@ -37,8 +37,7 @@ placeholder
 ## Load libraries
 ```{r libraries, cache=FALSE, eval=TRUE}
 library(tidyverse)
-theme_set(theme_classic())
-theme_update(plot.title = element_text(hjust = 0.5))
+library(ggpubr)
 library(rrrSingleCellUtils)
 library(Seurat)
 library(pzfx)
@@ -53,70 +52,175 @@ process_seurat <- function(obj, ...) {
         FindVariableFeatures(verbose = FALSE) %>%
         ScaleData(verbose = FALSE) %>%
         RunPCA(verbose = FALSE) %>%
-        RunUMAP(dims = 1:10, verbose = FALSE) %>%
+        RunUMAP(dims = 1:20, verbose = FALSE) %>%
         FindNeighbors(verbose = FALSE) %>%
-        FindClusters(verbose = FALSE, ...)
+        FindClusters(verbose = FALSE, resolution = 0.4, ...)
 }
-```
+theme_set(theme_pubr())
 
-## Get list of data sources
-```{r}
-data_sources <- readxl::read_excel("C:/Users/rxr014/OneDrive - Nationwide Children's Hospital/Papers/Active Manuscripts/Self seeding and IL6-IL1 paracrine loop/Source Data/Locations and Names of Data.xlsx")
+plot_cols <- c("#D43F3AFF", "#EEA236FF", "#357EBDFF", "#5CB85CFF", "#B8B8B8FF",
+  "#9632B8FF",  "#46B8DAFF", "#90302DFF", "#A66D04FF", "#2D577FFF", "#3E7E3EFF",
+  "#7D7D7DFF", "#6D1D87FF", "#097F9AFF", "#FF6E6AFF", "#FFBB70FF", "#68A4E3FF",
+  "#79D379FF", "#CDCDCDFF", "#BF6BE2FF", "#69D1F3FF")
+
+rDimPlot <- function(object, title = "Unlabeled Plot", subtitle = NA,
+  label = T, pt.size = 1, ...) {
+  if(length(levels(Idents(object))) < 22) {
+    p <- Seurat::DimPlot(
+      object = object, 
+      label = label, 
+      pt.size = pt.size,
+      cols = alpha(plot_cols, 0.6),
+      ...) +
+      labs(
+        title = title,
+        subtitle = subtitle) +
+      theme(legend.position = "none") +
+      coord_fixed()
+    print(p)
+    return(p)
+  } else {
+    print("Too many identity classes to use this function. Requires <22.")
+  }
+}
+
+rFeaturePlot <- function(object, features, title = "Unlabeled Plot", subtitle = NA,
+  pt.size = 1, order = T, ...) {
+  p <- Seurat::FeaturePlot(
+    object = object,
+    features = features,
+    pt.size = pt.size,
+    order = order,
+    cols = (c("lightgoldenrod", "darkred")),
+    ...) +
+    labs(
+      title = title,
+      subtitle = subtitle) +
+    coord_fixed()
+  print(p)
+  return(p)
+}
 ```
 
 ## Load and organize co-culture data
 ```{r , eval=TRUE}
 scrna_path <- "D:/OneDrive - Nationwide Children's Hospital/BIScratch/"
 deets_cocx <- tribble(
-    ~id, ~max_count, ~max_percent_mt,
-    "S0001", 16000, 14,
-    "S0005", 16000, 14)
+    ~id, ~max_count, ~max_percent_mt, ~src,
+    "S0001", 16000, 14, "mono-cx",
+    "S0005", 16000, 14, "co-cx")
 
 cocx <- lapply(seq_len(nrow(deets_cocx)), function(i) {
-    test <- tenx_load_qc(paste0(scrna_path,
-                        deets_cocx$id[i],
-                        "/filtered_feature_bc_matrix/"),
-                 violin_plot = FALSE) %>%
-        subset(nCount_RNA < deets_cocx$max_count[i] &
-                   percent.mt < deets_cocx$max_percent_mt[i]) %>%
+    s <- tenx_load_qc(paste0(scrna_path,
+                deets_cocx$id[i],
+                "/filtered_feature_bc_matrix/"),
+            violin_plot = FALSE) %>%
+        subset(
+            nCount_RNA < deets_cocx$max_count[i] &
+            percent.mt < deets_cocx$max_percent_mt[i]) %>%
         process_seurat()
 })
 names(cocx) <- deets_cocx$id
+for(i in seq_along(cocx)) {
+    cocx[[i]]$src <- deets_cocx$src[i]
+}
 ```
+
+## Intercellular signaling analysis on co-culture data
+Which signals produced by lung epithelial cells elicit the transcriptional changes that we see in osteosarcoma cells in co-culture?
+In NicheNET, define the target gene set by DEG analysis comparing osteosarcoma cells in co-culture to cultured alone.
+Define senders as the epithelial cells and receivers as the osteosarcoma cells.
+
+```{r, eval=TRUE}
+fig_nichenet <- list()
+
+cx <- merge(
+    cocx$S0001,
+    y = cocx$S0005,
+    add.cell.ids = c("mix", "cocx"),
+    project = "InterSignaling")
+
+cx <- process_seurat(cx)
+
+rDimPlot(cx, group.by = "src", title = "OS-17 + HBEC, source")
+rDimPlot(cx, title = "OS-17 + HBEC, clusters")
+rFeaturePlot(cx, features = "KRT19", title = "KRT19")
+rFeaturePlot(cx, features = "COL1A1", title = "COL1A1")
+
+# Suspect that cluster 9 is a group of doublets, remove
+cx <- subset(cx, idents = c(8, 9), invert = T)
+
+cx <- RenameIdents(cx,
+    `4` = "OS-Unstim",
+    `1` = "OS-Stim", `7` = "OS-Stim",
+    `0` = "HBEC-Stim", `2` = "HBEC-Stim", `5` = "HBEC-Stim",
+    `3` = "HBEC-Unstim", `6` = "HBEC-Unstim")
+
+rDimPlot(cx, title = "OS-17 + HBEC, assignment")
+
+target_genes <- find_tar_genes(cx,
+    id1 = "OS-Stim",
+    id2 = "OS-Unstim",
+    logfc = 0.5)
+
+LRT_analysis_1 <- find_ligands(cx,
+    target_genes,
+    senders = c("HBEC-Stim", "HBEC-Unstim"),
+    receiver = "OS-Stim",
+    rec_pct = 0.07,
+    stringency = "strict")
+
+fig_nichenet$LT_plot <- plot_complex_heatmap(LRT_analysis_1, 
+    grid_color_high = "steelblue4")
+fig_nichenet$LR_plot <- LRT_analysis_1[[3]] +
+    scale_fill_gradient(low = "gray98", high = "darkolivegreen")
+```
+
+
+
+
+
+
+
 
 ## Figure 2: Human tissue in lung
 ```{r plotHsTissue, eval=TRUE}
-table_table <- tribble(
-    ~label,              ~table_name,
-    "Primary vs None",   "Primary vs None",
-    "Amputation vs None","Amputation vs None"
+label_table <- tribble(
+    ~label, ~table_name,
+    "Primary vs None", "Primary vs None",
+    "Amputation vs None", "Amputation vs None"
 )
+
 file_name <- "../Source Data/Primary vs None.xml"
 perc_human_cutoff <- 0.1
 
-level_orders <- list(`Primary vs None` = c("Primary", "No Primary"),
-                     `Amputation vs None` = c("No Amp, Early Euth", "Early Amp, Late Euth", "No Amp, Late Euth"))
+level_orders <- list(
+    `Primary vs None` = c("Primary", "No Primary"),
+    `Amputation vs None` = c("No Amp, Early Euth", "Early Amp, Late Euth", "No Amp, Late Euth")
+)
 
-for (i in seq_len(nrow(table_table))) {
-    label <- table_table$label[i]
-    table_name <- table_table$table_name[i]
+for (i in seq_len(nrow(label_table))) {
+    label <- label_table$label[i]
+    table_name <- label_table$table_name[i]
 
     dataset <-
-        as_tibble(read_pzfx(file_name,
-                            table = table_name)
+        as_tibble(read_pzfx(file_name, table = table_name)) %>%
+        pivot_longer(
+            cols = everything(),
+            names_to = "condition",
+            values_to = "perc_human"
         ) %>%
-        pivot_longer(cols = everything(),
-                     names_to = "condition",
-                     values_to = "perc_human") %>%
         filter(!is.na(perc_human)) %>%
         mutate(condition = factor(condition, levels = level_orders[[label]]))
 
     n_greater_table <-
         dataset %>%
         group_by(condition) %>%
-        summarize(value = paste0(n_greater = sum(perc_human > perc_human_cutoff),
-                                 "/",
-                                 n()))
+        summarize(value = paste0(
+            n_greater = sum(perc_human > perc_human_cutoff),
+            "/",
+            n()
+            ))
 
     dataset_p <-
         pairwise.t.test(dataset$perc_human,
@@ -161,6 +265,10 @@ for (i in seq_len(nrow(table_table))) {
 ```
 
 
+## Get list of data sources
+```{r}
+data_sources <- readxl::read_excel("D:/OneDrive - Nationwide Children's Hospital/Papers/Active Manuscripts/Self seeding and IL6-IL1 paracrine loop/Source Data/Locations and Names of Data.xlsx")
+```
 
 ## Figure 4: Import transwell data and create data object
 Save data objects with metadata to data/
