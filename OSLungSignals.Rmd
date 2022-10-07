@@ -77,7 +77,6 @@ rDimPlot <- function(object, title = "Unlabeled Plot", subtitle = NA,
         subtitle = subtitle) +
       theme(legend.position = "none") +
       coord_fixed()
-    print(p)
     return(p)
   } else {
     print("Too many identity classes to use this function. Requires <22.")
@@ -91,13 +90,12 @@ rFeaturePlot <- function(object, features, title = "Unlabeled Plot", subtitle = 
     features = features,
     pt.size = pt.size,
     order = order,
-    cols = (c("lightgoldenrod", "darkred")),
+    cols = (c("gray95", "#1F00B8")),
     ...) +
     labs(
       title = title,
       subtitle = subtitle) +
     coord_fixed()
-  print(p)
   return(p)
 }
 ```
@@ -137,46 +135,52 @@ fig_nichenet <- list()
 cx <- merge(
     cocx$S0001,
     y = cocx$S0005,
-    add.cell.ids = c("mix", "cocx"),
+    add.cell.ids = c("monocx", "cocx"),
     project = "InterSignaling")
 
 cx <- process_seurat(cx)
 
-rDimPlot(cx, group.by = "src", title = "OS-17 + HBEC, source")
-rDimPlot(cx, title = "OS-17 + HBEC, clusters")
-rFeaturePlot(cx, features = "KRT19", title = "KRT19")
-rFeaturePlot(cx, features = "COL1A1", title = "COL1A1")
+fig_nichenet$umap_src <- rDimPlot(cx, 
+    group.by = "src",
+    title = "OS-17 + HBEC, source")
+fig_nichenet$umap <- rDimPlot(cx, title = "OS-17 + HBEC, clusters")
+fig_nichenet$krt19 <- rFeaturePlot(cx, features = "KRT19", title = "KRT19")
+fig_nichenet$col1a1 <- rFeaturePlot(cx, features = "COL1A1", title = "COL1A1")
 
 # Suspect that cluster 9 is a group of doublets, remove
 cx <- subset(cx, idents = c(8, 9), invert = T)
 
 cx <- RenameIdents(cx,
-    `4` = "OS-Unstim",
-    `1` = "OS-Stim", `7` = "OS-Stim",
-    `0` = "HBEC-Stim", `2` = "HBEC-Stim", `5` = "HBEC-Stim",
-    `3` = "HBEC-Unstim", `6` = "HBEC-Unstim")
+    `4` = "OS-MonoCx",
+    `1` = "OS-CoCx", `7` = "OS-CoCx",
+    `0` = "HBEC-CoCx", `2` = "HBEC-CoCx", `5` = "HBEC-CoCx",
+    `3` = "HBEC-MonoCx", `6` = "HBEC-MonoCx")
 
 rDimPlot(cx, title = "OS-17 + HBEC, assignment")
 
 target_genes <- find_tar_genes(cx,
-    id1 = "OS-Stim",
-    id2 = "OS-Unstim",
+    id1 = "OS-CoCx",
+    id2 = "OS-MonoCx",
     logfc = 0.5)
 
 LRT_analysis_1 <- find_ligands(cx,
     target_genes,
-    senders = c("HBEC-Stim", "HBEC-Unstim"),
-    receiver = "OS-Stim",
+    senders = c("HBEC-CoCx", "HBEC-MonoCx"),
+    receiver = "OS-CoCx",
     rec_pct = 0.07,
     stringency = "strict")
 
-fig_nichenet$LT_plot <- plot_complex_heatmap(LRT_analysis_1, 
-    grid_color_high = "steelblue4")
+fig_nichenet$LT_plot <- plot_complex_heatmap(LRT_analysis_1,
+    grid_color_high = "#004466")
 fig_nichenet$LR_plot <- LRT_analysis_1[[3]] +
-    scale_fill_gradient(low = "gray98", high = "darkolivegreen")
+    scale_fill_gradient(low = "gray98", high = "#006600")
 ```
 
+## Validation of IL1 as the primary lung-to-tumor signaling
 
+```{r}
+
+```
 
 
 
