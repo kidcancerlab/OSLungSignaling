@@ -42,6 +42,7 @@ library(rrrSingleCellUtils)
 library(Seurat)
 library(pzfx)
 library(ggbeeswarm)
+library(patchwork)
 ```
 
 ## Helper functions
@@ -63,7 +64,7 @@ plot_cols <- c("#D43F3AFF", "#EEA236FF", "#357EBDFF", "#5CB85CFF", "#B8B8B8FF",
   "#7D7D7DFF", "#6D1D87FF", "#097F9AFF", "#FF6E6AFF", "#FFBB70FF", "#68A4E3FF",
   "#79D379FF", "#CDCDCDFF", "#BF6BE2FF", "#69D1F3FF")
 
-rDimPlot <- function(object, title = "Unlabeled Plot", subtitle = NA,
+rDimPlot <- function(object, title = "Unlabeled Plot", subtitle = NULL,
   label = T, pt.size = 1, ...) {
   if(length(levels(Idents(object))) < 22) {
     p <- Seurat::DimPlot(
@@ -72,9 +73,7 @@ rDimPlot <- function(object, title = "Unlabeled Plot", subtitle = NA,
       pt.size = pt.size,
       cols = alpha(plot_cols, 0.6),
       ...) +
-      labs(
-        title = title,
-        subtitle = subtitle) +
+      labs(title = title, subtitle = subtitle) +
       theme(legend.position = "none") +
       coord_fixed()
     return(p)
@@ -83,7 +82,7 @@ rDimPlot <- function(object, title = "Unlabeled Plot", subtitle = NA,
   }
 }
 
-rFeaturePlot <- function(object, features, title = "Unlabeled Plot", subtitle = NA,
+rFeaturePlot <- function(object, features, title = "Unlabeled Plot", subtitle = NULL,
   pt.size = 1, order = T, ...) {
   p <- Seurat::FeaturePlot(
     object = object,
@@ -92,12 +91,13 @@ rFeaturePlot <- function(object, features, title = "Unlabeled Plot", subtitle = 
     order = order,
     cols = (c("gray95", "#1F00B8")),
     ...) +
-    labs(
-      title = title,
-      subtitle = subtitle) +
+    labs(title = title, subtitle = subtitle) +
+    theme(plot.title = element_text(hjust = 0)) +
     coord_fixed()
   return(p)
 }
+
+set.seed(888)
 ```
 
 ## Load and organize co-culture data
@@ -156,7 +156,7 @@ cx <- RenameIdents(cx,
     `0` = "HBEC-CoCx", `2` = "HBEC-CoCx", `5` = "HBEC-CoCx",
     `3` = "HBEC-MonoCx", `6` = "HBEC-MonoCx")
 
-rDimPlot(cx, title = "OS-17 + HBEC, assignment")
+fig_nichenet$assign <- rDimPlot(cx, title = "OS-17 + HBEC, assignment")
 
 target_genes <- find_tar_genes(cx,
     id1 = "OS-CoCx",
@@ -175,6 +175,80 @@ fig_nichenet$LT_plot <- plot_complex_heatmap(LRT_analysis_1,
 fig_nichenet$LR_plot <- LRT_analysis_1[[3]] +
     scale_fill_gradient(low = "gray98", high = "#006600")
 ```
+
+## Assemble the panel for NicheNET analysis
+```{r}
+p1 <- fig_nichenet$umap + fig_nichenet$umap_src + fig_nichenet$krt19 + 
+    fig_nichenet$col1a1 + plot_layout(ncol = 4)
+p2 <- fig_nichenet$assign + fig_nichenet$LT_plot + plot_layout(widths = c(1, 3))
+nn_panel <- p1 / p2 / fig_nichenet$LR_plot
+```
+
+## Isolate the co-culture tumor and evaluate IL6 and CXCL8 expression
+```{r}
+tumor_cocx <- subset(cx, idents = "OS-CoCx")
+
+# Remove the doublets that express epithelial markers
+tumor_cocx <- subset(tumor_cocx, cells = readRDS("doublets.rds"), invert = T)
+
+tumor_cocx <- process_seurat(tumor_cocx)
+tumor_cocx <- RunUMAP(tumor_cocx,
+        dims = 1:20,
+        n.neighbors = 20,
+        min.dist = 0.1,
+        local.connectivity = 5,
+        spread = 1,
+        verbose = FALSE) %>%
+    FindNeighbors(verbose = FALSE) %>%
+    FindClusters(verbose = FALSE, resolution = 0.25)
+
+p1 <- rDimPlot(tumor_cocx,
+    title = "Tumor in Co-culture")
+p2 <- DimPlot(tumor_cocx,
+        cells.highlight = WhichCells(tumor_cocx, expression = IL6 > 3),
+        cols.highlight = "#1F00B8",
+        pt.size = 1) +
+    labs(title = "IL6 Expression >3") +
+    theme(legend.position = "none") +
+    coord_fixed()
+p3 <- DimPlot(tumor_cocx,
+        cells.highlight = WhichCells(tumor_cocx, expression = CXCL8 > 6),
+        cols.highlight = "#1F00B8",
+        pt.size = 1) +
+    labs(title = "CXCL8 Expression >6") +
+    theme(legend.position = "none") +
+    coord_fixed()
+p4 <- rFeaturePlot(tumor_cocx,
+    "nCount_RNA",
+    title = "Total Counts")
+tumor_sub_panel <- p1 | p2 | p3 | p4
+
+rFeaturePlot(tumor_cocx,
+    "IL1R1",
+    title = "IL1R1 Expression")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ## Validation of IL1 as the primary lung-to-tumor signaling
 
