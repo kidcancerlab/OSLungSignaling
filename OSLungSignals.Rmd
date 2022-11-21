@@ -255,33 +255,50 @@ for(i in seq_along(mets)) {
 ## Check for co-occurrence of IL6, CXCL8, p21, and Ki67 in human lung mets
 
 ```{r}
-rDimPlot(mets$S0058, title = "Clusters")
-rFeaturePlot(mets$S0058, "COL1A1", title = "COL1A1 Expression")
-DimPlot(mets$S0058,
-        cells.highlight = WhichCells(mets$S0058, expression = IL6 > 2),
-        cols.highlight = "#1F00B8",
-        pt.size = 1) +
-    labs(title = "IL6 Expression >2") +
-    theme(legend.position = "none") +
-    coord_fixed()
 
-# Isolate the tumor cells (list previously generated)
-mets$tS0058 <- subset(mets$S0058, cells = readRDS("S0058TumorCells.rds"))
+tmets <- list()
+for(i in c("S0058", "S0059")){
+    rDimPlot(mets[[i]], title = paste(i, "Clusters"))
+    rFeaturePlot(mets[[i]], "IL6", title = paste(i, "COL1A1 Expression"))
+    DimPlot(mets[[i]],
+            cells.highlight = WhichCells(mets[[i]], expression = IL6 > 1),
+            cols.highlight = "#1F00B8",
+            pt.size = 1) +
+        labs(title = paste(i, "IL6 Expression >2")) +
+        theme(legend.position = "none") +
+        coord_fixed()
 
-mets$tS0058 <- process_seurat(mets$tS0058)
-rDimPlot(mets$tS0058, title = "Tumor Subclusters")
-rFeaturePlot(mets$tS0058, "IL6", title = "IL6 Expression")
-rFeaturePlot(mets$tS0058, "CXCL8", title = "CXCL8 Expression")
-DimPlot(mets$tS0058,
-        cells.highlight = WhichCells(mets$tS0058, expression = IL6 > 1),
-        cols.highlight = "#1F00B8",
-        pt.size = 1) +
-    labs(title = "IL6 Expression >1") +
-    theme(legend.position = "none") +
-    coord_fixed()
+    # Isolate the tumor cells (list previously generated)
+    tmets[[i]] <- subset(mets[[i]], 
+        cells = readRDS(paste0(i, "TumorCells.rds")))
 
+    tmets[[i]] <- process_seurat(tmets[[i]])
+    rDimPlot(tmets[[i]], title = paste(i, "Tumor Subclusters"))
+    rFeaturePlot(tmets[[i]], "IL6", title = paste(i, "IL6 Expression"))
+    rFeaturePlot(tmets[[i]], "CXCL8", title = paste(i, "CXCL8 Expression"))
+    DimPlot(tmets[[i]],
+            cells.highlight = WhichCells(tmets[[i]], expression = IL6 > 1),
+            cols.highlight = "#1F00B8",
+            pt.size = 1) +
+        labs(title = paste(i, "IL6 Expression >1")) +
+        theme(legend.position = "none") +
+        coord_fixed()
+}
 
+tumor_cocx <- SCTransform(tumor_cocx)
+s <- c("counts", "data", "scale.data")
+p <- lapply(s, function(i) {
+    t <- GetAssayData(tumor_cocx, slot = i) %>%
+        as.data.frame() %>%
+        t() %>% 
+        as.data.frame()
 
+    return(
+        ggplot(t, aes(IL6, CXCL8)) +
+            geom_point()
+    )
+})
+p[[1]] | p[[2]] | p[[3]]
 
 ```
 
