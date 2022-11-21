@@ -182,6 +182,7 @@ p1 <- fig_nichenet$umap + fig_nichenet$umap_src + fig_nichenet$krt19 +
     fig_nichenet$col1a1 + plot_layout(ncol = 4)
 p2 <- fig_nichenet$assign + fig_nichenet$LT_plot + plot_layout(widths = c(1, 3))
 nn_panel <- p1 / p2 / fig_nichenet$LR_plot
+nn_panel
 ```
 
 ## Isolate the co-culture tumor and evaluate IL6 and CXCL8 expression
@@ -220,18 +221,69 @@ p3 <- DimPlot(tumor_cocx,
     coord_fixed()
 p4 <- rFeaturePlot(tumor_cocx,
     "nCount_RNA",
-    title = "Total Counts")
+    title = "Total Counts",
+    max.cutoff = 12000)
 tumor_sub_panel <- p1 | p2 | p3 | p4
-
-rFeaturePlot(tumor_cocx,
-    "IL1R1",
-    title = "IL1R1 Expression")
+tumor_sub_panel
 ```
 
+## Load human met scRNA-seq and create Seurat objects
+
+```{r}
+deets_mets <- tribble(
+    ~id, ~max_count, ~max_percent_mt, ~src,
+    "S0058", 50000, 14, "met-1",
+    "S0059", 50000, 14, "met-2")
+
+mets <- lapply(seq_len(nrow(deets_mets)), function(i) {
+    s <- tenx_load_qc(paste0(scrna_path,
+                deets_mets$id[i],
+                "/filtered_feature_bc_matrix/"),
+            violin_plot = FALSE) %>%
+        subset(
+            nCount_RNA < deets_mets$max_count[i] &
+            percent.mt < deets_mets$max_percent_mt[i]) %>%
+        process_seurat()
+})
+
+names(mets) <- deets_mets$id
+for(i in seq_along(mets)) {
+    mets[[i]]$src <- deets_mets$src[i]
+}
+```
+
+## Check for co-occurrence of IL6, CXCL8, p21, and Ki67 in human lung mets
+
+```{r}
+rDimPlot(mets$S0058, title = "Clusters")
+rFeaturePlot(mets$S0058, "COL1A1", title = "COL1A1 Expression")
+DimPlot(mets$S0058,
+        cells.highlight = WhichCells(mets$S0058, expression = IL6 > 2),
+        cols.highlight = "#1F00B8",
+        pt.size = 1) +
+    labs(title = "IL6 Expression >2") +
+    theme(legend.position = "none") +
+    coord_fixed()
+
+# Isolate the tumor cells (list previously generated)
+mets$tS0058 <- subset(mets$S0058, cells = readRDS("S0058TumorCells.rds"))
+
+mets$tS0058 <- process_seurat(mets$tS0058)
+rDimPlot(mets$tS0058, title = "Tumor Subclusters")
+rFeaturePlot(mets$tS0058, "IL6", title = "IL6 Expression")
+rFeaturePlot(mets$tS0058, "CXCL8", title = "CXCL8 Expression")
+DimPlot(mets$tS0058,
+        cells.highlight = WhichCells(mets$tS0058, expression = IL6 > 1),
+        cols.highlight = "#1F00B8",
+        pt.size = 1) +
+    labs(title = "IL6 Expression >1") +
+    theme(legend.position = "none") +
+    coord_fixed()
 
 
 
 
+```
 
 
 
