@@ -204,10 +204,40 @@ for (i in seq_along(mets)) {
 tumor_cells <- readRDS("tumor_cells.rds")
 
 mets <- merge(mets[[1]], mets[[2:length(mets)]],
-    add.cell.ids = deets_mets$src) %>%
+    add.cell.ids = deets_mets$id) %>%
     process_seurat()
+mets$tumor <- "stroma"
+mets$tumor[names(mets$tumor) %in% readRDS("tumor_cells.rds")] <- "tumor"
 
 r_dim_plot(mets, "Merged human lung metastases")
+r_dim_plot(mets, group.by = "tumor", "Cells identified as tumor")
+
+mets_tumor <- subset(mets, tumor == "tumor") %>%
+    process_seurat()
+
+p1 <- r_dim_plot(mets_tumor, "Isolated tumor cells")
+p2 <- DimPlot(mets_tumor,
+        cells.highlight = WhichCells(mets_tumor, expression = IL6 > 0),
+        cols.highlight = "#1F00B8",
+        pt.size = 1) +
+    labs(title = "IL6") +
+    theme(legend.position = "none") +
+    coord_fixed()
+p3 <- DimPlot(mets_tumor,
+        cells.highlight = WhichCells(mets_tumor, expression = CXCL8 > 1),
+        cols.highlight = "#1F00B8",
+        pt.size = 1) +
+    labs(title = "CXCL8") +
+    theme(legend.position = "none") +
+    coord_fixed()
+p4 <- DimPlot(mets_tumor,
+        cells.highlight = WhichCells(mets_tumor, expression = CDKN1A > 1.5),
+        cols.highlight = "#1F00B8",
+        pt.size = 1) +
+    labs(title = "CDKN1A") +
+    theme(legend.position = "none") +
+    coord_fixed()
+p1 | p2 | p3 | p4
 ```
 
 ## Check for co-occurrence of IL6, CXCL8, p21, and Ki67 in human lung mets
