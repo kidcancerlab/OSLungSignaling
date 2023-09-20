@@ -69,7 +69,7 @@ cocx <- lapply(seq_len(nrow(deets_cocx)), function(i) {
         process_seurat()
 })
 names(cocx) <- deets_cocx$id
-for(i in seq_along(cocx)) {
+for (i in seq_along(cocx)) {
     cocx[[i]]$src <- deets_cocx$src[i]
 }
 ```
@@ -197,17 +197,24 @@ mets <- lapply(seq_len(nrow(deets_mets)), function(i) {
 })
 
 names(mets) <- deets_mets$id
-for(i in seq_along(mets)) {
+for (i in seq_along(mets)) {
     mets[[i]]$src <- deets_mets$src[i]
 }
+
+tumor_cells <- readRDS("tumor_cells.rds")
+
+mets <- merge(mets[[1]], mets[[2:length(mets)]],
+    add.cell.ids = deets_mets$src) %>%
+    process_seurat()
+
+r_dim_plot(mets, "Merged human lung metastases")
 ```
 
 ## Check for co-occurrence of IL6, CXCL8, p21, and Ki67 in human lung mets
 
 ```{r}
-
 tmets <- list()
-for(i in c("S0058", "S0059")){
+for (i in c("S0058", "S0059")) {
     r_dim_plot(mets[[i]], title = paste(i, "Clusters"))
     r_feature_plot(mets[[i]], "IL6", title = paste(i, "COL1A1 Expression"))
     DimPlot(mets[[i]],
@@ -219,10 +226,11 @@ for(i in c("S0058", "S0059")){
         coord_fixed()
 
     # Isolate the tumor cells (list previously generated)
-    tmets[[i]] <- subset(mets[[i]],
-        cells = readRDS(paste0(i, "TumorCells.rds")))
+    # tmets[[i]] <- subset(mets[[i]],
+    #     cells = readRDS(paste0(i, "TumorCells.rds")))
 
-    tmets[[i]] <- process_seurat(tmets[[i]])
+    # tmets[[i]] <- process_seurat(tmets[[i]])
+    tmets[[i]] <- mets[[i]]
     r_dim_plot(tmets[[i]], title = paste(i, "Tumor Subclusters"))
     r_feature_plot(tmets[[i]], "IL6", title = paste(i, "IL6 Expression"))
     r_feature_plot(tmets[[i]], "CXCL8", title = paste(i, "CXCL8 Expression"))
@@ -244,7 +252,7 @@ p <- lapply(s, function(i) {
         as.data.frame()
 
     return(
-        ggplot(t, aes(IL6, CXCL8)) +
+        ggplot(t, aes(IL6, CDKN1A)) +
             geom_point()
     )
 })
