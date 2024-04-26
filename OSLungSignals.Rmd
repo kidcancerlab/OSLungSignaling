@@ -86,7 +86,8 @@ cx <- merge(
     cocx$S0001,
     y = cocx$S0005,
     add.cell.ids = c("monocx", "cocx"),
-    project = "InterSignaling")
+    project = "InterSignaling") %>%
+    JoinLayers()
 
 cx <- process_seurat(cx, resolution  = 0.4)
 
@@ -231,13 +232,20 @@ p3 <- DimPlot(mets_tumor,
     theme(legend.position = "none") +
     coord_fixed()
 p4 <- DimPlot(mets_tumor,
+        cells.highlight = WhichCells(mets_tumor, expression = MKI67 > 1),
+        cols.highlight = "#1F00B8",
+        pt.size = 1) +
+    labs(title = "MKI67") +
+    theme(legend.position = "none") +
+    coord_fixed()
+p5 <- DimPlot(mets_tumor,
         cells.highlight = WhichCells(mets_tumor, expression = CDKN1A > 1.5),
         cols.highlight = "#1F00B8",
         pt.size = 1) +
     labs(title = "CDKN1A") +
     theme(legend.position = "none") +
     coord_fixed()
-p1 | p2 | p3 | p4
+p1 | p2 | p3 | p4 | p5
 ```
 
 ## Check for co-occurrence of IL6, CXCL8, p21, and Ki67 in human lung mets
