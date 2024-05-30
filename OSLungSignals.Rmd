@@ -2,7 +2,7 @@
 title: "Osteosarcoma - lung epithelial interactions"
 author: "Ryan Roberts"
 date: March 2022
-output: knitrBootstrap::bootstrap_document
+output: html_document
 ---
 
 ```{r setup, include=FALSE}
@@ -52,20 +52,19 @@ set.seed(888)
 
 ## Load and organize co-culture data
 ```{r , eval=TRUE}
-scrna_path <- "C:/Users/rxr014/OneDrive - Nationwide Children's Hospital/BIScratch/"
+scrna_path <- "../../../Counts/"
 deets_cocx <- tribble(
-    ~id, ~max_count, ~max_percent_mt, ~src,
-    "S0001", 16000, 14, "mono-cx",
-    "S0005", 16000, 14, "co-cx")
+    ~id, ~max_count, ~max_percent_mt, ~file,
+    "S0001", 16000, 14, "S0001-mix/outs",
+    "S0005", 16000, 14, "S0005-CoCx-2/outs")
 
 cocx <- lapply(seq_len(nrow(deets_cocx)), function(i) {
-    s <- tenx_load_qc(paste0(scrna_path,
-                deets_cocx$id[i],
-                "/filtered_feature_bc_matrix/"),
-            violin_plot = FALSE) %>%
-        subset(
-            nCount_RNA < deets_cocx$max_count[i] &
-            percent.mt < deets_cocx$max_percent_mt[i]) %>%
+    test <- tenx_load_qc(paste0(scrna_path,
+                        deets_cocx$file[i],
+                        "/filtered_feature_bc_matrix/"),
+                 violin_plot = FALSE) %>%
+        subset(nCount_RNA < deets_cocx$max_count[i] &
+                   percent.mt < deets_cocx$max_percent_mt[i]) %>%
         process_seurat()
 })
 names(cocx) <- deets_cocx$id
