@@ -69,7 +69,7 @@ cocx <- lapply(seq_len(nrow(deets_cocx)), function(i) {
 })
 names(cocx) <- deets_cocx$id
 for (i in seq_along(cocx)) {
-    cocx[[i]]$src <- deets_cocx$src[i]
+    cocx[[i]]$src <- deets_cocx$id[i]
 }
 ```
 

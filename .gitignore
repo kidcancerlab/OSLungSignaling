@@ -42,3 +42,4 @@ vignettes/*.pdf
 # R data files
 */*.rds
 data/*
+HuOsteo
