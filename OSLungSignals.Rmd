@@ -26,11 +26,19 @@ Generate figures for the tumor-epithelial paracrine signaling, self-seeding mech
 
 ## Samples:
 
-placeholder
+sample	type	primary loc
+BC2	primary	femur
+BC3	primary	tibia
+BC5	primary	femur
+BC6	primary	ulna
+BC10	lung met	femur
+BC11	recurrent	femur
+BC16	primary	tibia
+BC17	lung met	tibia
+BC20	recurrent	femur
+BC21	primary	femur
+BC22	primary	femur
 
-## Approach
-
-placeholder
 
 # Workflow
 
@@ -52,7 +60,7 @@ set.seed(888)
 
 ## Load and organize co-culture data
 ```{r , eval=TRUE}
-scrna_path <- "../../../Counts/"
+scrna_path <- "/home/gdrobertslab/lab/Counts/"
 deets_cocx <- tribble(
     ~id, ~max_count, ~max_percent_mt, ~file,
     "S0001", 16000, 14, "S0001-mix/outs",
@@ -88,23 +96,91 @@ cx <- merge(
     project = "InterSignaling") %>%
     JoinLayers()
 
-cx <- process_seurat(cx, resolution  = 0.4)
+opt_res <-
+    optimize_silhouette(cx, summary_plot = FALSE) %>%
+    arrange(desc(sil_vals)) %>%
+    slice_head(n = 1) %>%
+    pull(res_vals)
+
+cx <- process_seurat(cx, resolution  = opt_res)
 
 fig_nichenet$umap_src <- r_dim_plot(cx,
     group.by = "src",
     title = "OS-17 + HBEC, source")
 fig_nichenet$umap <- r_dim_plot(cx, title = "OS-17 + HBEC, clusters")
-fig_nichenet$krt19 <- r_feature_plot(cx, features = "KRT19", title = "KRT19")
-fig_nichenet$col1a1 <- r_feature_plot(cx, features = "COL1A1", title = "COL1A1")
+fig_nichenet$krt19 <- r_feature_plot(cx, features = "KRT19", title = "KRT19") # HBEC marker
+fig_nichenet$col1a1 <- r_feature_plot(cx, features = "COL1A1", title = "COL1A1") # OS marker
+
+offset_value <- 0.0001
+marker_data <-
+    GetAssayData(
+        cx
+    ) %>%
+    t() %>%
+    as.data.frame() %>%
+    select(KRT19, COL1A1) %>%
+    mutate(
+        KRT19 = KRT19 + offset_value,
+        COL1A1 = COL1A1 + offset_value,
+        marker_ratio = KRT19 / COL1A1
+    )
+
+cx <-
+    AddMetaData(
+        cx,
+        marker_data
+    )
+
+r_feature_plot(cx, "marker_ratio", title = "KRT19/COL1A1 Ratio")
+feature_hist(cx, features = "marker_ratio")
+
+ratio_threshold <- 1000
+tumor_clusters <-
+    cx@meta.data %>%
+    group_by(seurat_clusters, src) %>%
+    summarize(
+        mean_ratio = mean(marker_ratio),
+        .groups = "drop"
+    ) %>%
+    mutate(
+        is_tumor = if_else(
+            mean_ratio < ratio_threshold,
+            "OS",
+            "HBEC"
+        ),
+        culture = if_else(
+            src == "S0001",
+            "MonoCx",
+            "CoCx"
+        ),
+        group = paste0(is_tumor, "-", culture)
+    )
+
+cx <-
+    AddMetaData(
+        cx,
+        cx@meta.data %>%
+        rownames_to_column("cell") %>%
+        select("cell", "seurat_clusters", "src") %>%
+        merge(tumor_clusters, by = c("seurat_clusters", "src")) %>%
+        column_to_rownames("cell")
+    )
+
+r_dim_plot(cx, group.by = c("seurat_clusters", "group", "src")) /
+    r_feature_plot(cx, c("KRT19", "COL1A1"))
+
+Idents(cx) <- cx$group
+
+qs::qsave(cx, "output/rdata/cx.qs")
 
 # Suspect that cluster 9 is a group of doublets, remove
-cx <- subset(cx, idents = c(8, 9), invert = T)
+# cx <- subset(cx, idents = c(8, 9), invert = T)
 
-cx <- RenameIdents(cx,
-    `4` = "OS-MonoCx",
-    `1` = "OS-CoCx", `7` = "OS-CoCx",
-    `0` = "HBEC-CoCx", `2` = "HBEC-CoCx", `5` = "HBEC-CoCx",
-    `3` = "HBEC-MonoCx", `6` = "HBEC-MonoCx")
+# cx <- RenameIdents(cx,
+#     `4` = "OS-MonoCx",
+#     `1` = "OS-CoCx", `7` = "OS-CoCx",
+#     `0` = "HBEC-CoCx", `2` = "HBEC-CoCx", `5` = "HBEC-CoCx",
+#     `3` = "HBEC-MonoCx", `6` = "HBEC-MonoCx")
 
 fig_nichenet$assign <- r_dim_plot(cx, title = "OS-17 + HBEC, assignment")
 
@@ -132,6 +208,7 @@ p1 <- fig_nichenet$umap + fig_nichenet$umap_src + fig_nichenet$krt19 +
     fig_nichenet$col1a1 + plot_layout(ncol = 4)
 p2 <- fig_nichenet$assign + fig_nichenet$LT_plot + plot_layout(widths = c(1, 3))
 nn_panel <- p1 / p2 / fig_nichenet$LR_plot
+# Figure 3B/C/D/E
 nn_panel
 ```
 
@@ -174,6 +251,7 @@ p4 <- r_feature_plot(tumor_cocx,
     title = "Total Counts",
     max.cutoff = 12000)
 tumor_sub_panel <- p1 | p2 | p3 | p4
+# Figure 4A
 tumor_sub_panel
 ```
 
@@ -207,7 +285,7 @@ mets <- merge(mets[[1]], mets[[2:length(mets)]],
     add.cell.ids = deets_mets$id) %>%
     process_seurat()
 mets$tumor <- "stroma"
-mets$tumor[names(mets$tumor) %in% readRDS("tumor_cells.rds")] <- "tumor"
+mets$tumor[names(mets$tumor) %in% tumor_cells] <- "tumor"
 
 r_dim_plot(mets, "Merged human lung metastases")
 r_dim_plot(mets, group.by = "tumor", "Cells identified as tumor")
