@@ -1,0 +1,190 @@
+## Tibble of metadata for GEO samples
+Data comes from GSE152048
+```{r geo_cutoffs}
+geo_cutoffs <-
+    tribble(
+        ~sample,    ~ncount_max,    ~mt_percent,    ~site,
+        #"BC5",      22000,          20,             "primary",
+        "BC6",      40000,          15,             "primary",
+        "BC10",     25000,          15,             "metastatic",
+        "BC11",     30000,          20,             "primary",
+        "BC16",     60000,          20,             "primary",
+        "BC17",     45000,          20,             "metastatic",
+        "BC20",     75000,          20,             "primary",
+        "BC21",     60000,          15,             "primary",
+        "BC22",     60000,          20,             "primary"
+    )
+```
+
+## Load coculture tumor data to use as singleR reference
+```{r geo_load_coculture}
+os_culture <-
+    qs::qread("output/rdata/cx.qs") %>%
+    subset(group %in% c("OS-CoCx", "OS-MonoCx"))
+
+os_primary_pdx <- qs::qread("output/rdata/pdx_tibia.qs")
+os_primary_pdx$cell_type <- "tumor"
+
+os_met_pdx <- qs::qread("output/rdata/pdx_lungs.qs")
+os_met_pdx$cell_type <- "tumor"
+```
+
+## Read in the data, merge and process
+```{r geo_read_raw}
+pre_path <- "HuOsteo/PrimaryTumor/GSE152048/"
+
+assign_tumors <- function(sobj) {
+    sobj <- assign_tumors_celltypes(sobj)
+
+    return(sobj)
+}
+
+assign_tumors_celltypes <- function(sobj,
+                                    tumor_cell_types = c(
+                                        "Chondrocytes",
+                                        "Tissue stem cells",
+                                        "Fibroblasts",
+                                        "tumor"
+                                    )) {
+    # identify primary cell type for each seurat_clusters group
+    primary_cell_types <-
+        sobj@meta.data |>
+        dplyr::group_by(seurat_clusters, cell_type) |>
+        dplyr::summarize(
+            n_cells = n(),
+            .groups = "drop"
+        ) |>
+        dplyr::group_by(seurat_clusters) |>
+        dplyr::slice_max(order_by = n_cells, with_ties = FALSE) |>
+        dplyr::ungroup() |>
+        dplyr::select(-n_cells) |>
+        dplyr::mutate(
+            tumor_call_cell_type = ifelse(
+                cell_type %in% tumor_cell_types,
+                "tumor",
+                "normal"
+            )
+        ) |>
+        dplyr::select(seurat_clusters, tumor_call_cell_type)
+
+    sobj <-
+        Seurat::AddMetaData(
+            sobj,
+            sobj@meta.data |>
+                tibble::rownames_to_column("cell_id") |>
+                dplyr::select("cell_id", "seurat_clusters") |>
+                dplyr::left_join(
+                    primary_cell_types,
+                    by = "seurat_clusters",
+                    relationship = "many-to-many"
+                ) |>
+                tibble::column_to_rownames("cell_id")
+        )
+
+    return(sobj)
+}
+
+
+tumor_markers <- c("COL1A1", "COL1A2", "FBLN1", "SATB2", "RUNX2", "SOX9")
+
+geo_sobj_list <-
+    parallel::mclapply(
+        seq_len(nrow(geo_cutoffs)),
+        mc.preschedule = FALSE,
+        mc.cores = 8,
+        function(i) {
+            this_sobj <-
+                tenx_load_qc(
+                    paste0(pre_path, geo_cutoffs$sample[i]),
+                    violin_plot = FALSE
+                ) %>%
+                subset(
+                    percent.mt < geo_cutoffs$mt_percent[i] &
+                    nCount_RNA < geo_cutoffs$ncount_max[i]
+                ) %>%
+                process_seurat() %>%
+                annotate_celltypes(
+                    species = "human",
+                    add_ref = list(
+                        as.SingleCellExperiment(os_primary_pdx),
+                        as.SingleCellExperiment(os_met_pdx)
+                    ),
+                    add_labels = list(
+                        os_primary_pdx$cell_type,
+                        os_met_pdx$cell_type
+                    ),
+                    aggr_ref = TRUE
+                )
+
+            opt_res <-
+                optimize_silhouette(
+                    this_sobj,
+                    summary_plot = FALSE,
+                ) %>%
+                arrange(desc(sil_vals)) %>%
+                slice_head(n = 1) %>%
+                pull(res_vals)
+
+            this_sobj <- FindClusters(this_sobj, resolution = opt_res)
+
+            this_sobj$id <- geo_cutoffs$sample[i]
+            this_sobj$model <- "patient"
+
+            this_sobj <- assign_tumors(this_sobj)
+
+            return(this_sobj)
+        }
+    )
+names(geo_sobj_list) <- geo_cutoffs$sample
+
+qs::qsave(geo_sobj_list, "output/rdata/geo_sobj_list.qs")
+```
+
+## Make merged objects for primary and metastatic samples
+```{r geo_merge}
+geo_primary_samples <-
+    geo_cutoffs %>%
+    filter(site == "primary") %>%
+    pull(sample)
+
+geo_met_samples <-
+    geo_cutoffs %>%
+    filter(site == "metastatic") %>%
+    pull(sample)
+
+geo_sobj_list <- qs::qread("output/rdata/geo_sobj_list.qs")
+
+set.seed(1337)
+geo_primary_sobj <-
+    merge(
+        geo_sobj_list[[geo_primary_samples[1]]],
+        y = geo_sobj_list[geo_primary_samples[-1]]
+    ) %>%
+    process_seurat() %>%
+    harmony::RunHarmony(group.by.vars = "id") %>%
+    RunUMAP(reduction = "harmony", dims = 1:30) %>%
+    FindNeighbors(reduction = "harmony") %>%
+    FindClusters(resolution = 0.3) %>%
+    run_fdl()
+
+DimPlot(geo_primary_sobj, group.by = "id", reduction = "fdl")
+
+qs::qsave(geo_primary_sobj, "output/rdata/primary_sobj.qs")
+
+geo_met_sobj <-
+    merge(
+        geo_sobj_list[[geo_met_samples[1]]],
+        y = geo_sobj_list[geo_met_samples[-1]]
+    ) %>%
+    process_seurat() %>%
+    harmony::RunHarmony(group.by.vars = "id") %>%
+    RunUMAP(reduction = "harmony", dims = 1:30) %>%
+    FindNeighbors(reduction = "harmony") %>%
+    FindClusters(resolution = 0.3) %>%
+    run_fdl()
+
+DimPlot(geo_met_sobj, group.by = "id", reduction = "fdl")
+
+qs::qsave(geo_met_sobj, "output/rdata/met_sobj.qs")
+
+```
