@@ -34,7 +34,8 @@ options(future.globals.maxSize = 10000 * 1024^2)
 ## Intratumoral Heterogeneity - Lung Met
 ```{r}
 # pre_path <- "~/../lab/Counts_2/"
-pre_path <- "C:/Users/rxr014/OneDrive - Nationwide Children's Hospital/BIScratch/"
+# pre_path <- "C:/Users/rxr014/OneDrive - Nationwide Children's Hospital/BIScratch/"
+pre_path <- "/home/gdrobertslab/lab/Counts_2/"
 post_path <- "/filtered_feature_bc_matrix"
 samples <- tribble(
   ~id, ~model, ~mt_cutoff, ~count_cutoff, ~species,
@@ -83,7 +84,10 @@ r_dim_plot(pdx_lungs,
 
 Idents(pdx_lungs) <- pdx_lungs$seurat_clusters
 
+qs::qsave(pdx_lungs, "output/rdata/pdx_lungs.qs")
+
 r_feature_plot(pdx_lungs, "IL1R1", reduction = "fdl")
+# Figure 4D for os-17 lung met
 ```
 
 ## Evaluate gene expression
@@ -132,6 +136,7 @@ FeaturePlot(pdx_lungs,
   pt.size = 1,
   order = TRUE) +
   coord_fixed()
+# Figure 5C for os-17
 
 FeaturePlot(pdx_lungs,
   "IL1R1",
@@ -141,7 +146,7 @@ FeaturePlot(pdx_lungs,
   pt.size = 1,
   order = TRUE) +
   coord_fixed()
-
+# Figure 4D for os-17
 ```
 
 ## Test cell cycle regression
@@ -156,6 +161,7 @@ pdx_lungs_cc <- pdx_lungs %>%
   RunUMAP(reduction = "pca", dims = 1:30)
 
 r_dim_plot(pdx_lungs_cc, group.by = "Phase")
+# Figure 5C for os-17
 
 pdx_lungs_cc <- run_fdl(pdx_lungs_cc)
 
@@ -233,10 +239,14 @@ r_dim_plot(pdx_tibia,
     label = FALSE) +
   labs(title = "OS-17 Primary Tibia - Cell Cycle") +
   theme(legend.position = "right")
+# Figure 5C for os-17 tibia
 
 Idents(pdx_tibia) <- pdx_tibia$seurat_clusters
 
+qs::qsave(pdx_tibia, "output/rdata/pdx_tibia.qs")
+
 r_feature_plot(pdx_tibia, "IL1R1", reduction = "fdl")
+# Figure 4D for os-17 tibia
 ```
 
 ## Evaluate gene expression
@@ -285,6 +295,7 @@ FeaturePlot(pdx_tibia,
   pt.size = 1,
   order = TRUE) +
   coord_fixed()
+# Figure 5C for os-17 tibia
 
 FeaturePlot(pdx_tibia,
   "IL1R1",
@@ -294,7 +305,7 @@ FeaturePlot(pdx_tibia,
   pt.size = 1,
   order = TRUE) +
   coord_fixed()
-
+# Figure 4D for os-17 tibia
 ```
 
 ## Test cell cycle regression
@@ -338,3 +349,4 @@ pathways <- mclapply(unique(degs$cluster), function(clust) {
   return(p)
 }, mc.cores = parallelly::availableCores())
 ```
+
