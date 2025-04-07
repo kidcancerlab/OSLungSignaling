@@ -22,11 +22,21 @@ os_culture <-
     qs::qread("output/rdata/cx.qs") %>%
     subset(group %in% c("OS-CoCx", "OS-MonoCx"))
 
-os_primary_pdx <- qs::qread("output/rdata/pdx_tibia.qs")
+set.seed(1337)
+os_primary_pdx <-
+    qs::qread("output/rdata/pdx_tibia.qs") %>%
+    subset(downsample = 200)
 os_primary_pdx$cell_type <- "tumor"
 
-os_met_pdx <- qs::qread("output/rdata/pdx_lungs.qs")
+os_met_pdx <- qs::qread("output/rdata/pdx_lungs.qs") %>%
+    subset(downsample = 200)
 os_met_pdx$cell_type <- "tumor"
+```
+
+## Load hlca
+```{r geo_load_hlca}
+hlca <-
+    qs::qread("/home/gdrobertslab/lab/Analysis/Yogesh/CellTypeAnnRefs/input/downloads/ds_human_lung_atlas.qs")
 ```
 
 ## Read in the data, merge and process
@@ -84,7 +94,6 @@ assign_tumors_celltypes <- function(sobj,
     return(sobj)
 }
 
-
 tumor_markers <- c("COL1A1", "COL1A2", "FBLN1", "SATB2", "RUNX2", "SOX9")
 
 geo_sobj_list <-
@@ -107,12 +116,14 @@ geo_sobj_list <-
                     species = "human",
                     add_ref = list(
                         as.SingleCellExperiment(os_primary_pdx),
-                        as.SingleCellExperiment(os_met_pdx)
+                        as.SingleCellExperiment(os_met_pdx),
+                        as.SingleCellExperiment(hlca)
                     ),
                     add_labels = list(
                         os_primary_pdx$cell_type,
-                        os_met_pdx$cell_type
-                    ),
+                        os_met_pdx$cell_type,
+                        hlca$free_annotation
+                        ),
                     aggr_ref = TRUE
                 )
 
@@ -158,9 +169,15 @@ set.seed(1337)
 geo_primary_sobj <-
     merge(
         geo_sobj_list[[geo_primary_samples[1]]],
-        y = geo_sobj_list[geo_primary_samples[-1]]
+        y = geo_sobj_list[geo_primary_samples[-1]],
+        add.cell.ids = geo_primary_samples
     ) %>%
-    process_seurat() %>%
+    JoinLayers() %>%
+    subset(cell_type == "tumor") %>%
+    #process_seurat() %>%
+    FindVariableFeatures(nfeatures = 5000) %>%
+    ScaleData() %>%
+    RunPCA() %>%
     harmony::RunHarmony(group.by.vars = "id") %>%
     RunUMAP(reduction = "harmony", dims = 1:30) %>%
     FindNeighbors(reduction = "harmony") %>%
@@ -171,20 +188,71 @@ DimPlot(geo_primary_sobj, group.by = "id", reduction = "fdl")
 
 qs::qsave(geo_primary_sobj, "output/rdata/primary_sobj.qs")
 
+set.seed(1337)
 geo_met_sobj <-
     merge(
         geo_sobj_list[[geo_met_samples[1]]],
-        y = geo_sobj_list[geo_met_samples[-1]]
+        y = c(geo_sobj_list[geo_met_samples[-1]]),
+        add.cell.ids = geo_met_samples
     ) %>%
-    process_seurat() %>%
-    harmony::RunHarmony(group.by.vars = "id") %>%
+    JoinLayers() %>%
+    subset(cell_type == "tumor") %>%
+    #process_seurat() %>%
+    FindVariableFeatures(nfeatures = 5000) %>%
+    ScaleData() %>%
+    RunPCA() %>%
+    harmony::RunHarmony(group.by.vars = "id", theta = 2) %>%
     RunUMAP(reduction = "harmony", dims = 1:30) %>%
     FindNeighbors(reduction = "harmony") %>%
     FindClusters(resolution = 0.3) %>%
     run_fdl()
 
-DimPlot(geo_met_sobj, group.by = "id", reduction = "fdl")
+DimPlot(geo_met_sobj, group.by = "id", reduction = "fdl") /
+FeaturePlot(geo_met_sobj, "IL1R1", reduction = "fdl", order = TRUE)
 
 qs::qsave(geo_met_sobj, "output/rdata/met_sobj.qs")
+```
+
+
+## FeaturePlots
+```{r}
+FeaturePlot(
+    geo_primary_sobj,
+    features = c("IL1A", "IL1B", "IL6", "CXCL8", "IL1R1"),
+    reduction = "fdl"
+) /
+FeaturePlot(
+    geo_met_sobj,
+    features = c("IL1A", "IL1B", "IL6", "CXCL8", "IL1R1"),
+    reduction = "fdl",
+    order = TRUE
+)
+```
+
+```{r}
+gs <- "HALLMARK_TNFA_SIGNALING_VIA_NFKB"
+sigs <-
+    msigdbr::msigdbr(
+        species = "Homo sapiens",
+        category = "H"
+    ) %>%
+    select(gs_name, gene_symbol)
+
+cell_ranks <-
+    AUCell::AUCell_run(
+        geo_primary_sobj[["RNA"]]$counts,
+        sigs %>% filter(gs_name == gs) %>% pull(gene_symbol)
+    )
+geo_primary_sobj$nfkb_activity <- AUCell::getAUC(cell_ranks)[1,]
+
+FeaturePlot(geo_primary_sobj,
+  "nfkb_activity",
+  reduction = "fdl",
+  cols = c("#EEEEEE", "#ae0600"),
+  min.cutoff = 0.15,
+  pt.size = 1,
+  order = TRUE) +
+  coord_fixed()
+# Figure 5C for os-17 tibia
 
 ```
