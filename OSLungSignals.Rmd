@@ -48,7 +48,7 @@ library(tidyverse)
 library(ggpubr)
 library(rrrSingleCellUtils)
 library(Seurat)
-library(pzfx)
+# library(pzfx)
 library(ggbeeswarm)
 library(patchwork)
 ```
@@ -60,11 +60,11 @@ set.seed(888)
 
 ## Load and organize co-culture data
 ```{r , eval=TRUE}
-scrna_path <- "/home/gdrobertslab/lab/Counts/"
+scrna_path <- "/home/gdrobertslab/lab/Counts_2/"
 deets_cocx <- tribble(
     ~id, ~max_count, ~max_percent_mt, ~file,
-    "S0001", 16000, 14, "S0001-mix/outs",
-    "S0005", 16000, 14, "S0005-CoCx-2/outs")
+    "S0001", 16000, 14, "S0001",
+    "S0005", 16000, 14, "S0005")
 
 cocx <- lapply(seq_len(nrow(deets_cocx)), function(i) {
     test <- tenx_load_qc(paste0(scrna_path,
@@ -96,13 +96,15 @@ cx <- merge(
     project = "InterSignaling") %>%
     JoinLayers()
 
-opt_res <-
-    optimize_silhouette(cx, summary_plot = FALSE) %>%
-    arrange(desc(sil_vals)) %>%
-    slice_head(n = 1) %>%
-    pull(res_vals)
+# opt_res <-
+#     optimize_silhouette(cx, summary_plot = FALSE) %>%
+#     arrange(desc(sil_vals)) %>%
+#     slice_head(n = 1) %>%
+#     pull(res_vals)
 
-cx <- process_seurat(cx, resolution  = opt_res)
+cx <- process_seurat(cx, resolution  = 0.2)
+
+cx <- CHOIR::CHOIR(cx, n_cores = 5)
 
 fig_nichenet$umap_src <- r_dim_plot(cx,
     group.by = "src",
