@@ -1,35 +1,54 @@
----
-title: "Osteosarcoma - lung epithelial interactions"
-author: "Ryan Roberts"
-date: March 2022
-output: knitrBootstrap::bootstrap_document
----
+## Heterogeneity analysis
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE,
-                      cache = TRUE,
-                      fig.height = 10,
-                      fig.width = 20,
-                      dpi = 300,
-                      bootstrap.show.code = FALSE,
-                      bootstrap.show.output = FALSE,
-                      bootstrap.show.message = FALSE)
+### Isolate the co-culture tumor and evaluate IL6 and CXCL8 expression
+
+```{r}
+# Load the processed culture data
+cx <- qs::qread("output/seurat_objects/cx.qs")
+tumor_cocx <- subset(cx, idents = "OS-CoCx")
+
+# Remove the doublets that express epithelial markers
+tumor_cocx <- subset(tumor_cocx, cells = readRDS("misc/doublets.rds"), invert = T)
+
+tumor_cocx <- tumor_cocx %>%
+    FindVariableFeatures() %>%
+    RunPCA() %>%
+    RunUMAP(
+        dims = 1:20,
+        n.neighbors = 20,
+        min.dist = 0.1,
+        local.connectivity = 5,
+        spread = 1,
+        verbose = FALSE) %>%
+    FindNeighbors(verbose = FALSE) %>%
+    FindClusters(verbose = FALSE, resolution = 0.25)
+
+p1 <- r_dim_plot(tumor_cocx,
+    title = "Tumor in Co-culture")
+p2 <- DimPlot(tumor_cocx,
+        cells.highlight = WhichCells(tumor_cocx, expression = IL6 > 3),
+        cols.highlight = "#1F00B8",
+        pt.size = 1) +
+    labs(title = "IL6 Expression >3") +
+    theme(legend.position = "none") +
+    coord_fixed()
+p3 <- DimPlot(tumor_cocx,
+        cells.highlight = WhichCells(tumor_cocx, expression = CXCL8 > 6),
+        cols.highlight = "#1F00B8",
+        pt.size = 1) +
+    labs(title = "CXCL8 Expression >6") +
+    theme(legend.position = "none") +
+    coord_fixed()
+p4 <- r_feature_plot(tumor_cocx,
+    "nCount_RNA",
+    title = "Total Counts",
+    max.cutoff = 12000)
+p <- p1 | p2 | p3 | p4
+p
+stash_plot(p, "Hetero-1")
+
 ```
 
-## Load libraries
-```{r libraries, cache=FALSE, eval=TRUE}
-library(tidyverse)
-library(rrrSingleCellUtils)
-library(Seurat)
-library(future)
-library(future.apply)
-if(Sys.info()['sysname'] == "Windows") {
-  plan(multisession, workers = 5)
-} else {
-  plan(multicore)
-}
-options(future.globals.maxSize = 10000 * 1024^2)
-```
 
 ## Intratumoral Heterogeneity - Lung Met
 ```{r}
@@ -337,4 +356,132 @@ pathways <- mclapply(unique(degs$cluster), function(clust) {
 
   return(p)
 }, mc.cores = parallelly::availableCores())
+```
+
+
+
+
+
+
+
+
+
+### Load human met scRNA-seq and create Seurat objects
+
+```{r}
+deets_mets <- tribble(
+    ~id, ~max_count, ~max_percent_mt, ~src,
+    "S0058", 50000, 14, "met-1",
+    "S0059", 50000, 14, "met-2")
+
+mets <- lapply(seq_len(nrow(deets_mets)), function(i) {
+    s <- tenx_load_qc(paste0(scrna_path,
+                deets_mets$id[i],
+                "/filtered_feature_bc_matrix/"),
+            violin_plot = FALSE) %>%
+        subset(
+            nCount_RNA < deets_mets$max_count[i] &
+            percent.mt < deets_mets$max_percent_mt[i]) %>%
+        process_seurat()
+})
+
+names(mets) <- deets_mets$id
+for (i in seq_along(mets)) {
+    mets[[i]]$src <- deets_mets$src[i]
+}
+
+tumor_cells <- readRDS("tumor_cells.rds")
+
+mets <- merge(mets[[1]], mets[[2:length(mets)]],
+    add.cell.ids = deets_mets$id) %>%
+    process_seurat()
+mets$tumor <- "stroma"
+mets$tumor[names(mets$tumor) %in% readRDS("tumor_cells.rds")] <- "tumor"
+
+r_dim_plot(mets, "Merged human lung metastases")
+r_dim_plot(mets, group.by = "tumor", "Cells identified as tumor")
+
+mets_tumor <- subset(mets, tumor == "tumor") %>%
+    process_seurat()
+
+p1 <- r_dim_plot(mets_tumor, "Isolated tumor cells")
+p2 <- DimPlot(mets_tumor,
+        cells.highlight = WhichCells(mets_tumor, expression = IL6 > 0),
+        cols.highlight = "#1F00B8",
+        pt.size = 1) +
+    labs(title = "IL6") +
+    theme(legend.position = "none") +
+    coord_fixed()
+p3 <- DimPlot(mets_tumor,
+        cells.highlight = WhichCells(mets_tumor, expression = CXCL8 > 1),
+        cols.highlight = "#1F00B8",
+        pt.size = 1) +
+    labs(title = "CXCL8") +
+    theme(legend.position = "none") +
+    coord_fixed()
+p4 <- DimPlot(mets_tumor,
+        cells.highlight = WhichCells(mets_tumor, expression = MKI67 > 1),
+        cols.highlight = "#1F00B8",
+        pt.size = 1) +
+    labs(title = "MKI67") +
+    theme(legend.position = "none") +
+    coord_fixed()
+p5 <- DimPlot(mets_tumor,
+        cells.highlight = WhichCells(mets_tumor, expression = CDKN1A > 1.5),
+        cols.highlight = "#1F00B8",
+        pt.size = 1) +
+    labs(title = "CDKN1A") +
+    theme(legend.position = "none") +
+    coord_fixed()
+p1 | p2 | p3 | p4 | p5
+```
+
+### Check for co-occurrence of IL6, CXCL8, p21, and Ki67 in human lung mets
+
+```{r}
+tmets <- list()
+for (i in c("S0058", "S0059")) {
+    r_dim_plot(mets[[i]], title = paste(i, "Clusters"))
+    r_feature_plot(mets[[i]], "IL6", title = paste(i, "COL1A1 Expression"))
+    DimPlot(mets[[i]],
+            cells.highlight = WhichCells(mets[[i]], expression = IL6 > 1),
+            cols.highlight = "#1F00B8",
+            pt.size = 1) +
+        labs(title = paste(i, "IL6 Expression >2")) +
+        theme(legend.position = "none") +
+        coord_fixed()
+
+    # Isolate the tumor cells (list previously generated)
+    # tmets[[i]] <- subset(mets[[i]],
+    #     cells = readRDS(paste0(i, "TumorCells.rds")))
+
+    # tmets[[i]] <- process_seurat(tmets[[i]])
+    tmets[[i]] <- mets[[i]]
+    r_dim_plot(tmets[[i]], title = paste(i, "Tumor Subclusters"))
+    r_feature_plot(tmets[[i]], "IL6", title = paste(i, "IL6 Expression"))
+    r_feature_plot(tmets[[i]], "CXCL8", title = paste(i, "CXCL8 Expression"))
+    DimPlot(tmets[[i]],
+            cells.highlight = WhichCells(tmets[[i]], expression = IL6 > 1),
+            cols.highlight = "#1F00B8",
+            pt.size = 1) +
+        labs(title = paste(i, "IL6 Expression >1")) +
+        theme(legend.position = "none") +
+        coord_fixed()
+}
+
+tumor_cocx <- SCTransform(tumor_cocx)
+s <- c("counts", "data", "scale.data")
+p <- lapply(s, function(i) {
+    t <- GetAssayData(tumor_cocx, slot = i) %>%
+        as.data.frame() %>%
+        t() %>%
+        as.data.frame()
+
+    return(
+        ggplot(t, aes(IL6, CDKN1A)) +
+            geom_point()
+    )
+})
+p[[1]] | p[[2]] | p[[3]]
+
 ```

@@ -40,5 +40,5 @@ vignettes/*.pdf
 .Renviron
 
 # R data files
-*/*.rds
 data/*
+output/*

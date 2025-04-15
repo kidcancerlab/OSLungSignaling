@@ -1,0 +1,73 @@
+---
+title: "Tumor-osteosarcoma interactions during metastatic colonization of the lung"
+author: "Ryan Roberts, Matthew Cannon, James Reinecke"
+date: "`r format(Sys.time(), '%m/%d/%Y')`"
+format:
+    html:
+        toc: true
+        toc_float: true
+        toc_depth: 5
+        number_sections: false
+        code-fold: true
+        code-link: true
+        df-print: kable
+        embed-resources: true
+        self_contained: true
+execute:
+    cache: true
+knitr:
+    opts_chunk:
+        cache.lazy: false
+        cache.vars: ""
+        warning: false
+        message: false
+lightbox: true
+---
+
+```{r setup}
+#| include: FALSE
+library(tidyverse)
+library(rrrSingleCellUtils)
+library(Seurat)
+library(stashPlot)
+
+library(future)
+library(future.apply)
+if(Sys.info()['sysname'] == "Windows") {
+  plan(multisession, workers = 5)
+} else {
+  plan(multicore)
+}
+options(future.globals.maxSize = 10000 * 1024^2)
+```
+
+
+## Check required software is available
+```{r h5_check}
+#| cache: false
+hdf5_check()
+
+seurat_version_check()
+```
+
+
+# Read in raw data and process to Seurat objects
+The metadata for all samples is stored in misc/sample_metadata.tsv.
+
+Note that in the sample_metadata, for samples with multiple references, the cutoff format is "GRCh38-40000;mm10---20000" where the species_pattern is at the beginning of the string, followed by the cutoff value (no dash or anything). This is split from the second cutoff value by a semicolon. If there is only one reference, just use the cutoff value, no species pattern is needed.
+
+{{< include child_qmds/read_raw_data.qmd >}}
+
+# Merge the data by species and make DimPlots
+
+{{< include child_qmds/merge_dimplots.qmd >}}
+
+# Run differential expression and GSEA
+
+{{< include child_qmds/degs_gseaplots.qmd >}}
+
+
+# Session info
+```{r session_info}
+sessionInfo()
+```
