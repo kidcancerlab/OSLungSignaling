@@ -50,164 +50,12 @@ stash_plot(p, "Hetero-1")
 ```
 
 
-## Intratumoral Heterogeneity - Lung Met
+### Intratumoral Heterogeneity - Primary Tumor
 ```{r}
 # pre_path <- "~/../lab/Counts_2/"
 pre_path <- "C:/Users/rxr014/OneDrive - Nationwide Children's Hospital/BIScratch/"
 post_path <- "/filtered_feature_bc_matrix"
-samples <- tribble(
-  ~id, ~model, ~mt_cutoff, ~count_cutoff, ~species,
-  "S0281", "OS-17", 25, 160000, "^GRCh38-"
-)
 
-s <- 1
-pdx_lungs <- tenx_load_qc(
-    paste0(pre_path, samples$id[s], post_path),
-    species_pattern = samples$species[s],
-    violin_plot = FALSE
-  ) %>%
-  subset(
-    percent.mt < samples$mt_cutoff[s] &
-    nCount_RNA < samples$count_cutoff[s]
-  ) %>%
-  NormalizeData()
-pdx_lungs$id <- samples$id[s]
-pdx_lungs$model <- samples$model[s]
-
-pdx_lungs <- pdx_lungs %>%
-  FindVariableFeatures(nfeatures = 5000) %>%
-  ScaleData() %>%
-  RunPCA()
-
-pdx_lungs <- pdx_lungs %>%
-  FindNeighbors(reduction = "pca", k.param = 100L) %>%
-  FindClusters(resolution = 0.8) %>%
-  RunUMAP(reduction = "pca", dims = 1:30)
-
-r_dim_plot(pdx_lungs)
-
-pdx_lungs <- run_fdl(pdx_lungs)
-
-r_dim_plot(pdx_lungs, reduction = "fdl") +
-  labs(title = "OS-17 Lung Mets")
-
-pdx_lungs <- kill_cc(pdx_lungs)
-
-r_dim_plot(pdx_lungs,
-    reduction = "fdl",
-    group.by = "Phase",
-    label = FALSE) +
-  labs(title = "OS-17 Lung Mets - Cell Cycle") +
-  theme(legend.position = "right")
-
-Idents(pdx_lungs) <- pdx_lungs$seurat_clusters
-
-r_feature_plot(pdx_lungs, "IL1R1", reduction = "fdl")
-```
-
-## Evaluate gene expression
-```{r}
-# Pull the transcription-factor regulated gene sets from msigdb
-sigs <- msigdbr::msigdbr(species = "Homo sapiens",
-    category = "H") %>%
-  select(gs_name, gene_symbol)
-
-degs <- subset(pdx_lungs, idents = c(0, 2, 5, 6)) %>%
-  FindAllMarkers()
-
-pathways <- future_lapply(unique(degs$cluster), function(i) {
-  clust_degs <- degs %>%
-    filter(cluster == i & p_val_adj < 0.05) %>%
-    arrange(-avg_log2FC) %>%
-    pull(avg_log2FC, name = gene)
-  clusterProfiler::GSEA(clust_degs,
-    TERM2GENE = sigs,
-    nPermSimple = 10000) %>%
-    mutate(p.adjust = -log10(p.adjust))
-})
-FeaturePlot()
-plots <- lapply(seq_along(pathways), function(p) {
-  enrichplot::dotplot(pathways[[p]] %>% filter(NES > 0),
-    x = "NES",
-    showCategory = 15,
-    title = paste("Cluster", unique(degs$cluster)[p]))
-})
-
-patchwork::wrap_plots(plots, ncol = 2)
-
-gs <- "HALLMARK_TNFA_SIGNALING_VIA_NFKB"
-
-cell_ranks <- AUCell::AUCell_run(
-  pdx_lungs[["RNA"]]$counts,
-  sigs %>% filter(gs_name == gs) %>% pull(gene_symbol)
-)
-pdx_lungs$nfkb_activity <- AUCell::getAUC(cell_ranks)[1,]
-
-FeaturePlot(pdx_lungs,
-  "nfkb_activity",
-  reduction = "fdl",
-  cols = c("#EEEEEE", "#ae0600"),
-  min.cutoff = 0.15,
-  pt.size = 1,
-  order = TRUE) +
-  coord_fixed()
-
-FeaturePlot(pdx_lungs,
-  "IL1R1",
-  reduction = "fdl",
-  cols = c("#EEEEEE", "#ae0600"),
-  min.cutoff = 1,
-  pt.size = 1,
-  order = TRUE) +
-  coord_fixed()
-
-```
-
-## Test cell cycle regression
-```{r}
-pdx_lungs_cc <- pdx_lungs %>%
-  ScaleData(
-    vars.to.regress = c("S.Score", "G2M.Score"),
-    features = rownames(x = pdx_lungs)) %>%
-  RunPCA() %>%
-  FindNeighbors(reduction = "pca", k.param = 100L) %>%
-  FindClusters(resolution = 0.8) %>%
-  RunUMAP(reduction = "pca", dims = 1:30)
-
-r_dim_plot(pdx_lungs_cc, group.by = "Phase")
-
-pdx_lungs_cc <- run_fdl(pdx_lungs_cc)
-
-r_dim_plot(pdx_lungs_cc, group.by = "seurat_clusters", reduction = "fdl")
-r_feature_plot(pdx_lungs_cc, "PAX7", reduction = "fdl")
-```
-
-## GSEA
-```{r}
-degs <- FindAllMarkers(pdx_lungs_cc) %>%
-  filter(p_val_adj < 0.05) %>%
-  arrange(-avg_log2FC)
-
-pathways <- mclapply(unique(degs$cluster), function(clust) {
-  genes <- degs %>%
-    filter(cluster == clust)
-
-  p <- clusterProfiler::gseGO(
-    geneList = genes,
-    OrgDb = org.Hs.eg.db::org.Hs.ed.db,
-    ont = "BP",
-    keyType = "SYMBOL",
-    nPermSimple = 10000,
-    eps = 0
-  )
-
-  return(p)
-}, mc.cores = parallelly::availableCores())
-```
-
-
-## Intratumoral Heterogeneity - Primary Tumor
-```{r}
 samples <- tribble(
   ~id, ~model, ~mt_cutoff, ~count_cutoff, ~species,
   "S0037", "OS-17", 25, 160000, "^GRCh38-"
@@ -241,71 +89,11 @@ r_dim_plot(pdx_tibia)
 
 pdx_tibia <- run_fdl(pdx_tibia)
 
-r_dim_plot(pdx_tibia, reduction = "fdl") +
+p1 <- r_dim_plot(pdx_tibia, reduction = "fdl") +
   labs(title = "OS-17 Primary Tibia")
+p1
 
-pdx_tibia <- kill_cc(pdx_tibia)
-
-r_dim_plot(pdx_tibia,
-    reduction = "fdl",
-    group.by = "Phase",
-    label = FALSE) +
-  labs(title = "OS-17 Primary Tibia - Cell Cycle") +
-  theme(legend.position = "right")
-
-Idents(pdx_tibia) <- pdx_tibia$seurat_clusters
-
-r_feature_plot(pdx_tibia, "IL1R1", reduction = "fdl")
-```
-
-## Evaluate gene expression
-```{r}
-# Pull the transcription-factor regulated gene sets from msigdb
-sigs <- msigdbr::msigdbr(species = "Homo sapiens",
-    category = "H") %>%
-  select(gs_name, gene_symbol)
-
-# degs <- subset(pdx_tibia, idents = c(0, 2, 5, 6)) %>%
-#   FindAllMarkers()
-
-# pathways <- future_lapply(unique(degs$cluster), function(i) {
-#   clust_degs <- degs %>%
-#     filter(cluster == i & p_val_adj < 0.05) %>%
-#     arrange(-avg_log2FC) %>%
-#     pull(avg_log2FC, name = gene)
-#   clusterProfiler::GSEA(clust_degs,
-#     TERM2GENE = sigs,
-#     nPermSimple = 10000) %>%
-#     mutate(p.adjust = -log10(p.adjust))
-# })
-
-# plots <- lapply(seq_along(pathways), function(p) {
-#   enrichplot::dotplot(pathways[[p]] %>% filter(NES > 0),
-#     x = "NES",
-#     showCategory = 15,
-#     title = paste("Cluster", unique(degs$cluster)[p]))
-# })
-
-# patchwork::wrap_plots(plots, ncol = 2)
-
-gs <- "HALLMARK_TNFA_SIGNALING_VIA_NFKB"
-
-cell_ranks <- AUCell::AUCell_run(
-  pdx_tibia[["RNA"]]$counts,
-  sigs %>% filter(gs_name == gs) %>% pull(gene_symbol)
-)
-pdx_tibia$nfkb_activity <- AUCell::getAUC(cell_ranks)[1,]
-
-FeaturePlot(pdx_tibia,
-  "nfkb_activity",
-  reduction = "fdl",
-  cols = c("#EEEEEE", "#ae0600"),
-  min.cutoff = 0.15,
-  pt.size = 1,
-  order = TRUE) +
-  coord_fixed()
-
-FeaturePlot(pdx_tibia,
+p5 <- FeaturePlot(pdx_tibia,
   "IL1R1",
   reduction = "fdl",
   cols = c("#EEEEEE", "#ae0600"),
@@ -313,7 +101,63 @@ FeaturePlot(pdx_tibia,
   pt.size = 1,
   order = TRUE) +
   coord_fixed()
+p5
 
+qs::qsave(pdx_tibia, "output/seurat_objects/pdx_tibia.qs")
+```
+
+
+### Intratumoral Heterogeneity - Lung Met
+
+```{r}
+samples <- tribble(
+  ~id, ~model, ~mt_cutoff, ~count_cutoff, ~species,
+  "S0281", "OS-17", 25, 160000, "^GRCh38-"
+)
+
+s <- 1
+pdx_lungs <- tenx_load_qc(
+    paste0(pre_path, samples$id[s], post_path),
+    species_pattern = samples$species[s],
+    violin_plot = FALSE
+  ) %>%
+  subset(
+    percent.mt < samples$mt_cutoff[s] &
+    nCount_RNA < samples$count_cutoff[s]
+  ) %>%
+  NormalizeData()
+pdx_lungs$id <- samples$id[s]
+pdx_lungs$model <- samples$model[s]
+
+pdx_lungs <- pdx_lungs %>%
+  FindVariableFeatures(nfeatures = 5000) %>%
+  ScaleData() %>%
+  RunPCA()
+
+pdx_lungs <- pdx_lungs %>%
+  FindNeighbors(reduction = "pca", k.param = 100L) %>%
+  FindClusters(resolution = 0.8) %>%
+  RunUMAP(reduction = "pca", dims = 1:30)
+
+r_dim_plot(pdx_lungs)
+
+pdx_lungs <- run_fdl(pdx_lungs)
+
+p2 <- r_dim_plot(pdx_lungs, reduction = "fdl") +
+  labs(title = "OS-17 Lung Mets")
+p2
+
+p6 <- FeaturePlot(pdx_lungs,
+  "IL1R1",
+  reduction = "fdl",
+  cols = c("#EEEEEE", "#ae0600"),
+  min.cutoff = 1,
+  pt.size = 1,
+  order = TRUE) +
+  coord_fixed()
+p6
+
+qs::qsave(pdx_lungs, "output/seurat_objects/pdx_lungs.qs")
 ```
 
 ## Test cell cycle regression
@@ -485,3 +329,25 @@ p <- lapply(s, function(i) {
 p[[1]] | p[[2]] | p[[3]]
 
 ```
+
+
+
+## Test cell cycle regression
+```{r}
+pdx_lungs_cc <- pdx_lungs %>%
+  ScaleData(
+    vars.to.regress = c("S.Score", "G2M.Score"),
+    features = rownames(x = pdx_lungs)) %>%
+  RunPCA() %>%
+  FindNeighbors(reduction = "pca", k.param = 100L) %>%
+  FindClusters(resolution = 0.8) %>%
+  RunUMAP(reduction = "pca", dims = 1:30)
+
+r_dim_plot(pdx_lungs_cc, group.by = "Phase")
+
+pdx_lungs_cc <- run_fdl(pdx_lungs_cc)
+
+r_dim_plot(pdx_lungs_cc, group.by = "seurat_clusters", reduction = "fdl")
+r_feature_plot(pdx_lungs_cc, "PAX7", reduction = "fdl")
+```
+
