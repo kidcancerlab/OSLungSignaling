@@ -118,7 +118,7 @@ p5 <- DimPlot(mets_tumor,
 p1 | p2 | p3 | p4 | p5
 ```
 
-### Intratumoral Heterogeneity - Primary Tumor
+### Intratumoral Heterogeneity - PDX Primary 
 ```{r}
 samples <- tribble(
   ~id, ~model, ~mt_cutoff, ~count_cutoff, ~species,
@@ -170,7 +170,7 @@ p5
 qs::qsave(pdx_tibia, "output/seurat_objects/pdx_tibia.qs")
 ```
 
-### Intratumoral Heterogeneity - Lung Met
+### Intratumoral Heterogeneity - PDX Lung Met 
 ```{r}
 samples <- tribble(
   ~id, ~model, ~mt_cutoff, ~count_cutoff, ~species,
@@ -222,3 +222,12 @@ p6
 qs::qsave(pdx_lungs, "output/seurat_objects/pdx_lungs.qs")
 ```
 
+### Intratumoral Heterogeneity - Patient Primary
+```{r}
+
+```
+
+### Intratumoral Heterogeneity - Patient Lung Met
+```{r}
+
+```
