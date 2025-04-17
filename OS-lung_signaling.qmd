@@ -51,20 +51,20 @@ seurat_version_check()
 ```
 
 
-# Read in raw data and process to Seurat objects
-The metadata for all samples is stored in misc/sample_metadata.tsv.
+# Co-culture experiments and NicheNET analysis
+This script is organized generally into a series of subscripts that will process the raw data to generate figure panels as they are organized in the manuscript. The first of these will pull data from cell culture data--tumor cells and lung epithelial cells cultured either alone or together. This data will facilitate a ligand-receptor-target analysis designed to identify the mediators of the host-to-tumor interaction.
 
-Note that in the sample_metadata, for samples with multiple references, the cutoff format is "GRCh38-40000;mm10---20000" where the species_pattern is at the beginning of the string, followed by the cutoff value (no dash or anything). This is split from the second cutoff value by a semicolon. If there is only one reference, just use the cutoff value, no species pattern is needed.
+{{< include child_qmds/nichenet.qmd >}}
 
-{{< include child_qmds/read_raw_data.qmd >}}
+# Evaluate intratumoral heterogeneity in relation to paracrine signals
+This script assesses patterns of gene expression within tumor cell subpopulations isolated from PDX models and human patients.
 
-# Merge the data by species and make DimPlots
+{{< include child_qmds/heterogeneity.qmd >}}
 
-{{< include child_qmds/merge_dimplots.qmd >}}
+# IL1-related activity within tumor cells
+Here, we evaluate the same transcriptional data for evidence of IL1-driven tumor cell activation, as evidenced by signatures of NF-kB signaling.
 
-# Run differential expression and GSEA
-
-{{< include child_qmds/degs_gseaplots.qmd >}}
+{{< include child_qmds/nf-kb.qmd >}}
 
 
 # Session info

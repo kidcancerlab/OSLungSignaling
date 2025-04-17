@@ -100,7 +100,7 @@ stash_plot(p, "Nichenet_targets")
 ### Evaluate changes in the production of ligands with co-culture
 
 ```{r}
-ligands <- factor(
+ligands <- c(
     "TGFB1",
     "IL1A",
     "GMFB",
