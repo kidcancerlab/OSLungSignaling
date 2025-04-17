@@ -42,3 +42,4 @@ vignettes/*.pdf
 # R data files
 data/*
 output/*
+public/*

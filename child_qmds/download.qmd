@@ -24,7 +24,7 @@ if(!dir.exists("public")) {
   dir.create(tar_dir)
 }
 
-# Download, file, and extract the files from GEO
+# Download, extract, and organize the files from GEO
 if(!dir.exists("public/GSE152048")) {
   tar_dir <- "public/GSE152048"
   dir.create(tar_dir)
@@ -39,7 +39,7 @@ if(!dir.exists("public/GSE152048")) {
 }
 
 # Create a vector of normalized Seurat objects for all GSE152048 samples
-raw1 <- future_lapply(geo1$s, function(s) {
+human_geo <- future_lapply(geo1$s, function(s) {
   x <- tenx_load_qc(paste0("public/GSE152048/",
                           s, "/"))
   x <- subset(x, subset = nCount_RNA < geo1$qc[geo1$s == s] & percent.mt <13)
@@ -53,5 +53,12 @@ raw1 <- future_lapply(geo1$s, function(s) {
     ScaleData()
   return(raw)
 })
-names(raw1) <- geo1$s
+
+human_geo <- merge(human_geo[[1]], human_geo[2:length(human_geo)],
+    add.cell.ids = geo1$s) %>%
+    JoinLayers()
+
+human_geo[["RNA"]]$scale.data <- NULL
+
+qs::qsave(human_geo, "output/seurat_objects/human_geo.qs")
 ```

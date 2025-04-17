@@ -224,6 +224,15 @@ qs::qsave(pdx_lungs, "output/seurat_objects/pdx_lungs.qs")
 
 ### Intratumoral Heterogeneity - Patient Primary
 ```{r}
+primaries <- qs::qread("output/seurat_objects/human_geo.qs") %>%
+  subset(subset = type == "Primary") %>%
+  subset(downsample = 10000) %>%
+  FindVariableFeatures() %>%
+  ScaleData() %>%
+  RunPCA() %>%
+  RunHarmony() %>%
+  RunUMAP(reduction = "harmony")
+
 
 ```
 
