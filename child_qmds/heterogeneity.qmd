@@ -1,7 +1,6 @@
 ## Heterogeneity analysis
 
 ### Isolate the co-culture tumor and evaluate IL6 and CXCL8 expression
-
 ```{r}
 # Load the processed culture data
 cx <- qs::qread("output/seurat_objects/cx.qs")
@@ -49,13 +48,78 @@ stash_plot(p, "Hetero-1")
 
 ```
 
-
-### Intratumoral Heterogeneity - Primary Tumor
+### Load human met scRNA-seq and create Seurat objects
 ```{r}
 # pre_path <- "~/../lab/Counts_2/"
 pre_path <- "C:/Users/rxr014/OneDrive - Nationwide Children's Hospital/BIScratch/"
 post_path <- "/filtered_feature_bc_matrix"
 
+deets_mets <- tribble(
+    ~id, ~max_count, ~max_percent_mt, ~src,
+    "S0058", 50000, 14, "met-1",
+    "S0059", 50000, 14, "met-2")
+
+mets <- future_lapply(seq_len(nrow(deets_mets)), function(i) {
+    s <- tenx_load_qc(paste0(pre_path,
+                deets_mets$id[i],
+                "/filtered_feature_bc_matrix/"),
+            violin_plot = FALSE) %>%
+        subset(
+            nCount_RNA < deets_mets$max_count[i] &
+            percent.mt < deets_mets$max_percent_mt[i]) %>%
+        process_seurat()
+})
+names(mets) <- deets_mets$id
+for (i in seq_along(mets)) {
+    mets[[i]]$src <- deets_mets$src[i]
+}
+
+mets <- merge(mets[[1]], mets[[2:length(mets)]],
+    add.cell.ids = deets_mets$id) %>%
+    process_seurat()
+mets$tumor <- "stroma"
+mets$tumor[names(mets$tumor) %in% readRDS("misc/tumor_cells.rds")] <- "tumor"
+
+r_dim_plot(mets, "Merged human lung metastases")
+r_dim_plot(mets, group.by = "tumor", "Cells identified as tumor")
+
+mets_tumor <- subset(mets, tumor == "tumor") %>%
+    process_seurat()
+
+p1 <- r_dim_plot(mets_tumor, "Isolated tumor cells")
+p2 <- DimPlot(mets_tumor,
+        cells.highlight = WhichCells(mets_tumor, expression = IL6 > 0),
+        cols.highlight = "#1F00B8",
+        pt.size = 1) +
+    labs(title = "IL6") +
+    theme(legend.position = "none") +
+    coord_fixed()
+p3 <- DimPlot(mets_tumor,
+        cells.highlight = WhichCells(mets_tumor, expression = CXCL8 > 1),
+        cols.highlight = "#1F00B8",
+        pt.size = 1) +
+    labs(title = "CXCL8") +
+    theme(legend.position = "none") +
+    coord_fixed()
+p4 <- DimPlot(mets_tumor,
+        cells.highlight = WhichCells(mets_tumor, expression = MKI67 > 1),
+        cols.highlight = "#1F00B8",
+        pt.size = 1) +
+    labs(title = "MKI67") +
+    theme(legend.position = "none") +
+    coord_fixed()
+p5 <- DimPlot(mets_tumor,
+        cells.highlight = WhichCells(mets_tumor, expression = CDKN1A > 1.5),
+        cols.highlight = "#1F00B8",
+        pt.size = 1) +
+    labs(title = "CDKN1A") +
+    theme(legend.position = "none") +
+    coord_fixed()
+p1 | p2 | p3 | p4 | p5
+```
+
+### Intratumoral Heterogeneity - Primary Tumor
+```{r}
 samples <- tribble(
   ~id, ~model, ~mt_cutoff, ~count_cutoff, ~species,
   "S0037", "OS-17", 25, 160000, "^GRCh38-"
@@ -106,9 +170,7 @@ p5
 qs::qsave(pdx_tibia, "output/seurat_objects/pdx_tibia.qs")
 ```
 
-
 ### Intratumoral Heterogeneity - Lung Met
-
 ```{r}
 samples <- tribble(
   ~id, ~model, ~mt_cutoff, ~count_cutoff, ~species,
@@ -158,196 +220,5 @@ p6 <- FeaturePlot(pdx_lungs,
 p6
 
 qs::qsave(pdx_lungs, "output/seurat_objects/pdx_lungs.qs")
-```
-
-## Test cell cycle regression
-```{r}
-pdx_tibia_cc <- pdx_tibia %>%
-  ScaleData(
-    vars.to.regress = c("S.Score", "G2M.Score"),
-    features = rownames(x = pdx_tibia)) %>%
-  RunPCA() %>%
-  FindNeighbors(reduction = "pca", k.param = 100L) %>%
-  FindClusters(resolution = 0.8) %>%
-  RunUMAP(reduction = "pca", dims = 1:30)
-
-r_dim_plot(pdx_tibia_cc, group.by = "Phase")
-
-pdx_tibia_cc <- run_fdl(pdx_tibia_cc)
-
-r_dim_plot(pdx_tibia_cc, group.by = "seurat_clusters", reduction = "fdl")
-r_feature_plot(pdx_tibia_cc, "PAX7", reduction = "fdl")
-```
-
-## GSEA
-```{r}
-degs <- FindAllMarkers(pdx_tibia_cc) %>%
-  filter(p_val_adj < 0.05) %>%
-  arrange(-avg_log2FC)
-
-pathways <- mclapply(unique(degs$cluster), function(clust) {
-  genes <- degs %>%
-    filter(cluster == clust)
-
-  p <- clusterProfiler::gseGO(
-    geneList = genes,
-    OrgDb = org.Hs.eg.db::org.Hs.ed.db,
-    ont = "BP",
-    keyType = "SYMBOL",
-    nPermSimple = 10000,
-    eps = 0
-  )
-
-  return(p)
-}, mc.cores = parallelly::availableCores())
-```
-
-
-
-
-
-
-
-
-
-### Load human met scRNA-seq and create Seurat objects
-
-```{r}
-deets_mets <- tribble(
-    ~id, ~max_count, ~max_percent_mt, ~src,
-    "S0058", 50000, 14, "met-1",
-    "S0059", 50000, 14, "met-2")
-
-mets <- lapply(seq_len(nrow(deets_mets)), function(i) {
-    s <- tenx_load_qc(paste0(scrna_path,
-                deets_mets$id[i],
-                "/filtered_feature_bc_matrix/"),
-            violin_plot = FALSE) %>%
-        subset(
-            nCount_RNA < deets_mets$max_count[i] &
-            percent.mt < deets_mets$max_percent_mt[i]) %>%
-        process_seurat()
-})
-
-names(mets) <- deets_mets$id
-for (i in seq_along(mets)) {
-    mets[[i]]$src <- deets_mets$src[i]
-}
-
-tumor_cells <- readRDS("tumor_cells.rds")
-
-mets <- merge(mets[[1]], mets[[2:length(mets)]],
-    add.cell.ids = deets_mets$id) %>%
-    process_seurat()
-mets$tumor <- "stroma"
-mets$tumor[names(mets$tumor) %in% readRDS("tumor_cells.rds")] <- "tumor"
-
-r_dim_plot(mets, "Merged human lung metastases")
-r_dim_plot(mets, group.by = "tumor", "Cells identified as tumor")
-
-mets_tumor <- subset(mets, tumor == "tumor") %>%
-    process_seurat()
-
-p1 <- r_dim_plot(mets_tumor, "Isolated tumor cells")
-p2 <- DimPlot(mets_tumor,
-        cells.highlight = WhichCells(mets_tumor, expression = IL6 > 0),
-        cols.highlight = "#1F00B8",
-        pt.size = 1) +
-    labs(title = "IL6") +
-    theme(legend.position = "none") +
-    coord_fixed()
-p3 <- DimPlot(mets_tumor,
-        cells.highlight = WhichCells(mets_tumor, expression = CXCL8 > 1),
-        cols.highlight = "#1F00B8",
-        pt.size = 1) +
-    labs(title = "CXCL8") +
-    theme(legend.position = "none") +
-    coord_fixed()
-p4 <- DimPlot(mets_tumor,
-        cells.highlight = WhichCells(mets_tumor, expression = MKI67 > 1),
-        cols.highlight = "#1F00B8",
-        pt.size = 1) +
-    labs(title = "MKI67") +
-    theme(legend.position = "none") +
-    coord_fixed()
-p5 <- DimPlot(mets_tumor,
-        cells.highlight = WhichCells(mets_tumor, expression = CDKN1A > 1.5),
-        cols.highlight = "#1F00B8",
-        pt.size = 1) +
-    labs(title = "CDKN1A") +
-    theme(legend.position = "none") +
-    coord_fixed()
-p1 | p2 | p3 | p4 | p5
-```
-
-### Check for co-occurrence of IL6, CXCL8, p21, and Ki67 in human lung mets
-
-```{r}
-tmets <- list()
-for (i in c("S0058", "S0059")) {
-    r_dim_plot(mets[[i]], title = paste(i, "Clusters"))
-    r_feature_plot(mets[[i]], "IL6", title = paste(i, "COL1A1 Expression"))
-    DimPlot(mets[[i]],
-            cells.highlight = WhichCells(mets[[i]], expression = IL6 > 1),
-            cols.highlight = "#1F00B8",
-            pt.size = 1) +
-        labs(title = paste(i, "IL6 Expression >2")) +
-        theme(legend.position = "none") +
-        coord_fixed()
-
-    # Isolate the tumor cells (list previously generated)
-    # tmets[[i]] <- subset(mets[[i]],
-    #     cells = readRDS(paste0(i, "TumorCells.rds")))
-
-    # tmets[[i]] <- process_seurat(tmets[[i]])
-    tmets[[i]] <- mets[[i]]
-    r_dim_plot(tmets[[i]], title = paste(i, "Tumor Subclusters"))
-    r_feature_plot(tmets[[i]], "IL6", title = paste(i, "IL6 Expression"))
-    r_feature_plot(tmets[[i]], "CXCL8", title = paste(i, "CXCL8 Expression"))
-    DimPlot(tmets[[i]],
-            cells.highlight = WhichCells(tmets[[i]], expression = IL6 > 1),
-            cols.highlight = "#1F00B8",
-            pt.size = 1) +
-        labs(title = paste(i, "IL6 Expression >1")) +
-        theme(legend.position = "none") +
-        coord_fixed()
-}
-
-tumor_cocx <- SCTransform(tumor_cocx)
-s <- c("counts", "data", "scale.data")
-p <- lapply(s, function(i) {
-    t <- GetAssayData(tumor_cocx, slot = i) %>%
-        as.data.frame() %>%
-        t() %>%
-        as.data.frame()
-
-    return(
-        ggplot(t, aes(IL6, CDKN1A)) +
-            geom_point()
-    )
-})
-p[[1]] | p[[2]] | p[[3]]
-
-```
-
-
-
-## Test cell cycle regression
-```{r}
-pdx_lungs_cc <- pdx_lungs %>%
-  ScaleData(
-    vars.to.regress = c("S.Score", "G2M.Score"),
-    features = rownames(x = pdx_lungs)) %>%
-  RunPCA() %>%
-  FindNeighbors(reduction = "pca", k.param = 100L) %>%
-  FindClusters(resolution = 0.8) %>%
-  RunUMAP(reduction = "pca", dims = 1:30)
-
-r_dim_plot(pdx_lungs_cc, group.by = "Phase")
-
-pdx_lungs_cc <- run_fdl(pdx_lungs_cc)
-
-r_dim_plot(pdx_lungs_cc, group.by = "seurat_clusters", reduction = "fdl")
-r_feature_plot(pdx_lungs_cc, "PAX7", reduction = "fdl")
 ```
 

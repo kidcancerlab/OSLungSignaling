@@ -164,3 +164,125 @@ pathways <- mclapply(unique(degs$cluster), function(clust) {
   return(p)
 }, mc.cores = parallelly::availableCores())
 ```
+
+
+
+## Test cell cycle regression
+```{r}
+pdx_tibia_cc <- pdx_tibia %>%
+  ScaleData(
+    vars.to.regress = c("S.Score", "G2M.Score"),
+    features = rownames(x = pdx_tibia)) %>%
+  RunPCA() %>%
+  FindNeighbors(reduction = "pca", k.param = 100L) %>%
+  FindClusters(resolution = 0.8) %>%
+  RunUMAP(reduction = "pca", dims = 1:30)
+
+r_dim_plot(pdx_tibia_cc, group.by = "Phase")
+
+pdx_tibia_cc <- run_fdl(pdx_tibia_cc)
+
+r_dim_plot(pdx_tibia_cc, group.by = "seurat_clusters", reduction = "fdl")
+r_feature_plot(pdx_tibia_cc, "PAX7", reduction = "fdl")
+```
+
+## GSEA
+```{r}
+degs <- FindAllMarkers(pdx_tibia_cc) %>%
+  filter(p_val_adj < 0.05) %>%
+  arrange(-avg_log2FC)
+
+pathways <- mclapply(unique(degs$cluster), function(clust) {
+  genes <- degs %>%
+    filter(cluster == clust)
+
+  p <- clusterProfiler::gseGO(
+    geneList = genes,
+    OrgDb = org.Hs.eg.db::org.Hs.ed.db,
+    ont = "BP",
+    keyType = "SYMBOL",
+    nPermSimple = 10000,
+    eps = 0
+  )
+
+  return(p)
+}, mc.cores = parallelly::availableCores())
+```
+
+
+
+### Check for co-occurrence of IL6, CXCL8, p21, and Ki67 in human lung mets
+```{r}
+tmets <- list()
+for (i in c("S0058", "S0059")) {
+    r_dim_plot(mets[[i]], title = paste(i, "Clusters"))
+    r_feature_plot(mets[[i]], "IL6", title = paste(i, "COL1A1 Expression"))
+    DimPlot(mets[[i]],
+            cells.highlight = WhichCells(mets[[i]], expression = IL6 > 1),
+            cols.highlight = "#1F00B8",
+            pt.size = 1) +
+        labs(title = paste(i, "IL6 Expression >2")) +
+        theme(legend.position = "none") +
+        coord_fixed()
+
+    # Isolate the tumor cells (list previously generated)
+    # tmets[[i]] <- subset(mets[[i]],
+    #     cells = readRDS(paste0(i, "TumorCells.rds")))
+
+    # tmets[[i]] <- process_seurat(tmets[[i]])
+    tmets[[i]] <- mets[[i]]
+    r_dim_plot(tmets[[i]], title = paste(i, "Tumor Subclusters"))
+    r_feature_plot(tmets[[i]], "IL6", title = paste(i, "IL6 Expression"))
+    r_feature_plot(tmets[[i]], "CXCL8", title = paste(i, "CXCL8 Expression"))
+    DimPlot(tmets[[i]],
+            cells.highlight = WhichCells(tmets[[i]], expression = IL6 > 1),
+            cols.highlight = "#1F00B8",
+            pt.size = 1) +
+        labs(title = paste(i, "IL6 Expression >1")) +
+        theme(legend.position = "none") +
+        coord_fixed()
+}
+
+tumor_cocx <- SCTransform(tumor_cocx)
+s <- c("counts", "data", "scale.data")
+p <- lapply(s, function(i) {
+    t <- GetAssayData(tumor_cocx, slot = i) %>%
+        as.data.frame() %>%
+        t() %>%
+        as.data.frame()
+
+    return(
+        ggplot(t, aes(IL6, CDKN1A)) +
+            geom_point()
+    )
+})
+p[[1]] | p[[2]] | p[[3]]
+
+```
+
+
+
+## Test cell cycle regression
+```{r}
+pdx_lungs_cc <- pdx_lungs %>%
+  ScaleData(
+    vars.to.regress = c("S.Score", "G2M.Score"),
+    features = rownames(x = pdx_lungs)) %>%
+  RunPCA() %>%
+  FindNeighbors(reduction = "pca", k.param = 100L) %>%
+  FindClusters(resolution = 0.8) %>%
+  RunUMAP(reduction = "pca", dims = 1:30)
+
+r_dim_plot(pdx_lungs_cc, group.by = "Phase")
+
+pdx_lungs_cc <- run_fdl(pdx_lungs_cc)
+
+r_dim_plot(pdx_lungs_cc, group.by = "seurat_clusters", reduction = "fdl")
+r_feature_plot(pdx_lungs_cc, "PAX7", reduction = "fdl")
+```
+
+
+
+
+
+
