@@ -42,10 +42,13 @@ p4 <- r_feature_plot(tumor_cocx,
     "nCount_RNA",
     title = "Total Counts",
     max.cutoff = 12000)
+
 p <- p1 | p2 | p3 | p4
 p
 stash_plot(p, "Hetero-1")
 
+qs::qsave(tumor_cocx, "output/seurat_objects/tumor_cocx.qs")
+rm(tumor_cocx)
 ```
 
 ### Load human met scRNA-seq and create Seurat objects
@@ -115,7 +118,13 @@ p5 <- DimPlot(mets_tumor,
     labs(title = "CDKN1A") +
     theme(legend.position = "none") +
     coord_fixed()
-p1 | p2 | p3 | p4 | p5
+
+p <- p1 | p2 | p3 | p4 | p5
+p
+stash_plot(p, "Hetero-2")
+
+qs::qsave(mets, "output/seurat_objects/mets.qs")
+rm(mets)
 ```
 
 ### Intratumoral Heterogeneity - PDX Primary 
@@ -168,6 +177,7 @@ p5 <- FeaturePlot(pdx_tibia,
 p5
 
 qs::qsave(pdx_tibia, "output/seurat_objects/pdx_tibia.qs")
+rm(pdx_tibia)
 ```
 
 ### Intratumoral Heterogeneity - PDX Lung Met 
@@ -220,23 +230,90 @@ p6 <- FeaturePlot(pdx_lungs,
 p6
 
 qs::qsave(pdx_lungs, "output/seurat_objects/pdx_lungs.qs")
+rm(pdx_lungs)
 ```
 
 ### Intratumoral Heterogeneity - Patient Primary
 ```{r}
+tumor_cells <- qs::qread("misc/human_os_annotations.qs") %>%
+  row.names()
+
 primaries <- qs::qread("output/seurat_objects/human_geo.qs") %>%
   subset(subset = type == "Primary") %>%
+  subset(cells = tumor_cells) %>%
   subset(downsample = 10000) %>%
   FindVariableFeatures() %>%
   ScaleData() %>%
   RunPCA() %>%
-  RunHarmony() %>%
-  RunUMAP(reduction = "harmony")
+  harmony::RunHarmony("src") %>%
+  RunUMAP(dims = 1:30, reduction = "harmony") %>%
+  FindNeighbors(reduction = "harmony") %>%
+  FindClusters(resolution = 0.4)
 
+primaries <- run_fdl(primaries)
 
+p3 <- r_dim_plot(primaries, reduction = "fdl")
+p3
+
+p7 <- FeaturePlot(primaries,
+  "IL1R1",
+  reduction = "fdl",
+  cols = c("#EEEEEE", "#ae0600"),
+  min.cutoff = 1,
+  pt.size = 1,
+  order = TRUE) +
+  coord_fixed()
+p7
+
+qs::qsave(primaries, "output/seurat_objects/primaries.qs")
+rm(primaries)
 ```
 
 ### Intratumoral Heterogeneity - Patient Lung Met
+```{r}
+mets2 <- qs::qread("output/seurat_objects/human_geo.qs") %>%
+  subset(subset = type == "Lung Met") %>%
+  subset(cells = tumor_cells) %>%
+  FindVariableFeatures() %>%
+  ScaleData() %>%
+  RunPCA() %>%
+  harmony::RunHarmony("src") %>%
+  RunUMAP(dims = 1:30, reduction = "harmony") %>%
+  FindNeighbors(reduction = "harmony") %>%
+  FindClusters(resolution = 0.4)
+
+mets2 <- run_fdl(mets2)
+
+p4 <- r_dim_plot(mets2, reduction = "fdl")
+p4
+
+p8 <- FeaturePlot(mets2,
+  "IL1R1",
+  reduction = "fdl",
+  cols = c("#EEEEEE", "#ae0600"),
+  min.cutoff = 0.5,
+  pt.size = 1,
+  order = TRUE) +
+  coord_fixed()
+p8
+
+qs::qsave(mets2, "output/seurat_objects/mets2.qs")
+rm(mets2)
+
+# Load tumor cells from the pre-processed patient data
+# ***doi of fibrosis paper
+patient_mets <- qs::qread("public/integrated_lungs.qs")
+
+```
+
+### Assemble the figure panel
+```{r}
+p <- (p1 | p2 | p3 | p4) / (p5 | p6 | p7 | p8)
+p
+stash_plot(p, "Hetero-3")
+```
+
+
 ```{r}
 
 ```
