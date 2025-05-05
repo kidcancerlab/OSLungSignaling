@@ -53,8 +53,8 @@ rm(tumor_cocx)
 
 ### Load human met scRNA-seq and create Seurat objects
 ```{r}
-# pre_path <- "~/../lab/Counts_2/"
-pre_path <- "C:/Users/rxr014/OneDrive - Nationwide Children's Hospital/BIScratch/"
+pre_path <- "~/../lab/Counts_2/"
+# pre_path <- "C:/Users/rxr014/OneDrive - Nationwide Children's Hospital/BIScratch/"
 post_path <- "/filtered_feature_bc_matrix"
 
 deets_mets <- tribble(
@@ -271,39 +271,129 @@ rm(primaries)
 
 ### Intratumoral Heterogeneity - Patient Lung Met
 ```{r}
-mets2 <- qs::qread("output/seurat_objects/human_geo.qs") %>%
+# Load tumor cells from the pre-processed patient data
+# ***doi of fibrosis paper
+pt_mets_1 <- qs::qread("public/integrated_lungs.qs") %>%
+  subset(subset = met_labels == "Tumor") %>%
+  subset(subset = method == "cell")
+
+# And from the GEO dataset downloaded in download.qmd
+pt_mets_2 <- qs::qread("output/seurat_objects/human_geo.qs") %>%
   subset(subset = type == "Lung Met") %>%
-  subset(cells = tumor_cells) %>%
-  FindVariableFeatures() %>%
+  subset(cells = tumor_cells)
+
+# Align key metadata
+pt_mets_2$id <- pt_mets_2$src
+pt_mets_2$src <- "Geo"
+pt_mets_2$method <- "cell"
+
+# Merge and downsample
+pt_mets_tumor <- merge(pt_mets_1, pt_mets_2) %>%
+  JoinLayers() %>%
+  subset(downsample = 1200) %>%
   ScaleData() %>%
-  RunPCA() %>%
-  harmony::RunHarmony("src") %>%
-  RunUMAP(dims = 1:30, reduction = "harmony") %>%
+  FindVariableFeatures(nfeatures = 5000) %>%
+  RunPCA()
+
+# Integration optimization procedure
+# hopts <- tibble(
+#   theta = c(0.5, 1, 2, 4, 8),
+#   sigma = c(.01, .03, .1, .3, 1),
+#   lambda = c(.1, .3, 1, 3, 10)
+# )
+
+# hopts <- expand.grid(hopts$theta, hopts$sigma, hopts$lambda) %>%
+#   setNames(colnames(hopts))
+
+# results <- parallel::mclapply(1:nrow(hopts), function(i) {
+#   sobj <- pt_mets_tumor %>%
+#     harmony::RunHarmony("id",
+#       dims.use = 1:50,
+#       theta = hopts$theta[i],
+#       sigma = hopts$sigma[i],
+#       lambda = hopts$lambda[i]) %>%
+#     RunUMAP(dims = 1:50, reduction = "harmony") %>%
+#     FindNeighbors(reduction = "harmony") %>%
+#     FindClusters(resolution = 0.4)
+
+#   return(
+#     r_dim_plot(sobj, 
+#       group.by = "id",
+#       order = TRUE,
+#       ) +
+#       ggtitle(paste0(
+#         "Theta ",
+#         hopts$theta[i],
+#         ", Sigma ",
+#         hopts$sigma[i],
+#         ", Lambda ",
+#         hopts$lambda[i]
+#       ))
+#   )
+# }, mc.cores = parallelly::availableCores())
+
+# format(object.size(results), "Gb")
+# patchwork::wrap_plots(results[1:25], ncol = 5)
+# patchwork::wrap_plots(results[26:50], ncol = 5)
+# patchwork::wrap_plots(results[51:75], ncol = 5)
+# patchwork::wrap_plots(results[76:100], ncol = 5)
+# patchwork::wrap_plots(results[101:125], ncol = 5)
+
+# 1 .1 .1 (0.03)
+# 2 .1 .3 *
+# 4 .1 .3 *
+# 8 .03 .1
+
+pt_mets_tumor <- pt_mets_tumor %>%
+  harmony::RunHarmony(c("id"),
+    dims.use = 1:50,
+    theta = 4,
+    sigma = .1,
+    lambda = .3) %>%
+  RunUMAP(dims = 1:50, reduction = "harmony") %>%
   FindNeighbors(reduction = "harmony") %>%
-  FindClusters(resolution = 0.4)
+  FindClusters(resolution = 0.4) %>%
+  run_fdl()
 
-mets2 <- run_fdl(mets2)
+# pp1 <- r_dim_plot(pt_mets_tumor, order = TRUE)
+# pp2 <- r_dim_plot(pt_mets_tumor, group.by = "id", order = TRUE)
+# pp3 <- r_dim_plot(pt_mets_tumor, group.by = "src",order = TRUE)
+# pp4 <- r_dim_plot(pt_mets_tumor, group.by = "method", order = TRUE)
+# (pp1 | pp2) / (pp3 | pp4)
 
-p4 <- r_dim_plot(mets2, reduction = "fdl")
+
+# t <- proc.time()
+#   graph <- igraph::graph_from_adjacency_matrix(adjmatrix = pt_mets_tumor[['RNA_snn']], 
+#       mode = "undirected", weighted = TRUE, add.colnames = TRUE)
+#   fdl <- igraph::layout_with_fr(graph, grid = "nogrid", niter = 500)
+#   rownames(fdl) <- colnames(pt_mets_tumor)
+#   colnames(fdl) <- c("fdl_1", "fdl_2")
+#   pt_mets_tumor[["fdl.old"]] <- SeuratObject::CreateDimReducObject(embeddings = fdl, 
+#       key = "fdl_", assay = SeuratObject::DefaultAssay(pt_mets_tumor))
+# proc.time() - t
+
+# pp1 <- r_dim_plot(pt_mets_tumor, reduction = "fdl.old", order = TRUE)
+# pp2 <- r_dim_plot(pt_mets_tumor, reduction = "fdl.old", group.by = "id", order = TRUE)
+# pp3 <- r_dim_plot(pt_mets_tumor, reduction = "fdl.old", group.by = "src",order = TRUE)
+# pp4 <- r_dim_plot(pt_mets_tumor, reduction = "fdl.old", group.by = "method", order = TRUE)
+# (pp1 | pp2) / (pp3 | pp4)
+
+p4 <- r_dim_plot(pt_mets_tumor, reduction = "fdl", order = TRUE)
 p4
 
-p8 <- FeaturePlot(mets2,
+p8 <- FeaturePlot(pt_mets_tumor,
   "IL1R1",
   reduction = "fdl",
   cols = c("#EEEEEE", "#ae0600"),
-  min.cutoff = 0.5,
+  min.cutoff = 2,
+  max.cutoff = 4,
   pt.size = 1,
   order = TRUE) +
   coord_fixed()
 p8
 
-qs::qsave(mets2, "output/seurat_objects/mets2.qs")
-rm(mets2)
-
-# Load tumor cells from the pre-processed patient data
-# ***doi of fibrosis paper
-patient_mets <- qs::qread("public/integrated_lungs.qs")
-
+qs::qsave(pt_mets_tumor, "output/seurat_objects/pt_mets_tumor.qs")
+rm(pt_mets_tumor)
 ```
 
 ### Assemble the figure panel
