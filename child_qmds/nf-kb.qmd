@@ -1,59 +1,22 @@
-### Evaluate gene expression - Tibia
+### Evaluate cell cycle and NF-kB - PDX Tibia
 ***incomplete--needs to be aligned with lung met
 ```{r}
 pdx_tibia <- qs::qread("output/seurat_objects/pdx_tibia.qs")
 
-r_dim_plot(pdx_tibia)
-
-pdx_tibia <- run_fdl(pdx_tibia)
-
-r_dim_plot(pdx_tibia, reduction = "fdl") +
-  labs(title = "OS-17 Primary Tibia")
-
 pdx_tibia <- kill_cc(pdx_tibia)
 
-r_dim_plot(pdx_tibia,
+p5 <- r_dim_plot(pdx_tibia,
     reduction = "fdl",
     group.by = "Phase",
     label = FALSE) +
   labs(title = "OS-17 Primary Tibia - Cell Cycle") +
   theme(legend.position = "right")
+p5
 
-Idents(pdx_tibia) <- pdx_tibia$seurat_clusters
-
-r_feature_plot(pdx_tibia, "IL1R1", reduction = "fdl")
-```
-
-
-## Evaluate gene expression
-```{r}
 # Pull the transcription-factor regulated gene sets from msigdb
 sigs <- msigdbr::msigdbr(species = "Homo sapiens",
     category = "H") %>%
   select(gs_name, gene_symbol)
-
-# degs <- subset(pdx_tibia, idents = c(0, 2, 5, 6)) %>%
-#   FindAllMarkers()
-
-# pathways <- future_lapply(unique(degs$cluster), function(i) {
-#   clust_degs <- degs %>%
-#     filter(cluster == i & p_val_adj < 0.05) %>%
-#     arrange(-avg_log2FC) %>%
-#     pull(avg_log2FC, name = gene)
-#   clusterProfiler::GSEA(clust_degs,
-#     TERM2GENE = sigs,
-#     nPermSimple = 10000) %>%
-#     mutate(p.adjust = -log10(p.adjust))
-# })
-
-# plots <- lapply(seq_along(pathways), function(p) {
-#   enrichplot::dotplot(pathways[[p]] %>% filter(NES > 0),
-#     x = "NES",
-#     showCategory = 15,
-#     title = paste("Cluster", unique(degs$cluster)[p]))
-# })
-
-# patchwork::wrap_plots(plots, ncol = 2)
 
 gs <- "HALLMARK_TNFA_SIGNALING_VIA_NFKB"
 
@@ -63,7 +26,7 @@ cell_ranks <- AUCell::AUCell_run(
 )
 pdx_tibia$nfkb_activity <- AUCell::getAUC(cell_ranks)[1,]
 
-FeaturePlot(pdx_tibia,
+p1 <- FeaturePlot(pdx_tibia,
   "nfkb_activity",
   reduction = "fdl",
   cols = c("#EEEEEE", "#ae0600"),
@@ -71,6 +34,13 @@ FeaturePlot(pdx_tibia,
   pt.size = 1,
   order = TRUE) +
   coord_fixed()
+p1
+
+```
+
+
+## Evaluate gene expression
+```{r}
 ```
 
 ### Evaluate gene expression - Lung Met

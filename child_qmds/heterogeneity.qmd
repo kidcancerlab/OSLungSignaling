@@ -166,14 +166,22 @@ p1 <- r_dim_plot(pdx_tibia, reduction = "fdl") +
   labs(title = "OS-17 Primary Tibia")
 p1
 
+# Set scale common to IL1R1 plots
+il1_scale <- scale_color_gradient(
+  limits = c(1, 4), 
+  # colors = c("#EEEEEE", "#AE0600"),
+  low = "#EEEEEE",
+  high = "#AE0600",
+  oob = scales::squish
+  )
+
 p5 <- FeaturePlot(pdx_tibia,
   "IL1R1",
   reduction = "fdl",
-  cols = c("#EEEEEE", "#ae0600"),
-  min.cutoff = 1,
   pt.size = 1,
   order = TRUE) +
-  coord_fixed()
+  coord_fixed() +
+  il1_scale
 p5
 
 qs::qsave(pdx_tibia, "output/seurat_objects/pdx_tibia.qs")
@@ -222,11 +230,10 @@ p2
 p6 <- FeaturePlot(pdx_lungs,
   "IL1R1",
   reduction = "fdl",
-  cols = c("#EEEEEE", "#ae0600"),
-  min.cutoff = 1,
   pt.size = 1,
   order = TRUE) +
-  coord_fixed()
+  coord_fixed() +
+  il1_scale
 p6
 
 qs::qsave(pdx_lungs, "output/seurat_objects/pdx_lungs.qs")
@@ -252,17 +259,17 @@ primaries <- qs::qread("output/seurat_objects/human_geo.qs") %>%
 
 primaries <- run_fdl(primaries)
 
-p3 <- r_dim_plot(primaries, reduction = "fdl")
+p3 <- r_dim_plot(primaries, reduction = "fdl") +
+  labs(title = "Patient Primary Tumors")
 p3
 
 p7 <- FeaturePlot(primaries,
   "IL1R1",
   reduction = "fdl",
-  cols = c("#EEEEEE", "#ae0600"),
-  min.cutoff = 1,
   pt.size = 1,
   order = TRUE) +
-  coord_fixed()
+  coord_fixed() +
+  il1_scale
 p7
 
 qs::qsave(primaries, "output/seurat_objects/primaries.qs")
@@ -295,59 +302,10 @@ pt_mets_tumor <- merge(pt_mets_1, pt_mets_2) %>%
   FindVariableFeatures(nfeatures = 5000) %>%
   RunPCA()
 
-# Integration optimization procedure
-# hopts <- tibble(
-#   theta = c(0.5, 1, 2, 4, 8),
-#   sigma = c(.01, .03, .1, .3, 1),
-#   lambda = c(.1, .3, 1, 3, 10)
-# )
-
-# hopts <- expand.grid(hopts$theta, hopts$sigma, hopts$lambda) %>%
-#   setNames(colnames(hopts))
-
-# results <- parallel::mclapply(1:nrow(hopts), function(i) {
-#   sobj <- pt_mets_tumor %>%
-#     harmony::RunHarmony("id",
-#       dims.use = 1:50,
-#       theta = hopts$theta[i],
-#       sigma = hopts$sigma[i],
-#       lambda = hopts$lambda[i]) %>%
-#     RunUMAP(dims = 1:50, reduction = "harmony") %>%
-#     FindNeighbors(reduction = "harmony") %>%
-#     FindClusters(resolution = 0.4)
-
-#   return(
-#     r_dim_plot(sobj, 
-#       group.by = "id",
-#       order = TRUE,
-#       ) +
-#       ggtitle(paste0(
-#         "Theta ",
-#         hopts$theta[i],
-#         ", Sigma ",
-#         hopts$sigma[i],
-#         ", Lambda ",
-#         hopts$lambda[i]
-#       ))
-#   )
-# }, mc.cores = parallelly::availableCores())
-
-# format(object.size(results), "Gb")
-# patchwork::wrap_plots(results[1:25], ncol = 5)
-# patchwork::wrap_plots(results[26:50], ncol = 5)
-# patchwork::wrap_plots(results[51:75], ncol = 5)
-# patchwork::wrap_plots(results[76:100], ncol = 5)
-# patchwork::wrap_plots(results[101:125], ncol = 5)
-
-# 1 .1 .1 (0.03)
-# 2 .1 .3 *
-# 4 .1 .3 *
-# 8 .03 .1
-
 pt_mets_tumor <- pt_mets_tumor %>%
   harmony::RunHarmony(c("id"),
     dims.use = 1:50,
-    theta = 4,
+    theta = 8,
     sigma = .1,
     lambda = .3) %>%
   RunUMAP(dims = 1:50, reduction = "harmony") %>%
@@ -355,41 +313,17 @@ pt_mets_tumor <- pt_mets_tumor %>%
   FindClusters(resolution = 0.4) %>%
   run_fdl()
 
-# pp1 <- r_dim_plot(pt_mets_tumor, order = TRUE)
-# pp2 <- r_dim_plot(pt_mets_tumor, group.by = "id", order = TRUE)
-# pp3 <- r_dim_plot(pt_mets_tumor, group.by = "src",order = TRUE)
-# pp4 <- r_dim_plot(pt_mets_tumor, group.by = "method", order = TRUE)
-# (pp1 | pp2) / (pp3 | pp4)
-
-
-# t <- proc.time()
-#   graph <- igraph::graph_from_adjacency_matrix(adjmatrix = pt_mets_tumor[['RNA_snn']], 
-#       mode = "undirected", weighted = TRUE, add.colnames = TRUE)
-#   fdl <- igraph::layout_with_fr(graph, grid = "nogrid", niter = 500)
-#   rownames(fdl) <- colnames(pt_mets_tumor)
-#   colnames(fdl) <- c("fdl_1", "fdl_2")
-#   pt_mets_tumor[["fdl.old"]] <- SeuratObject::CreateDimReducObject(embeddings = fdl, 
-#       key = "fdl_", assay = SeuratObject::DefaultAssay(pt_mets_tumor))
-# proc.time() - t
-
-# pp1 <- r_dim_plot(pt_mets_tumor, reduction = "fdl.old", order = TRUE)
-# pp2 <- r_dim_plot(pt_mets_tumor, reduction = "fdl.old", group.by = "id", order = TRUE)
-# pp3 <- r_dim_plot(pt_mets_tumor, reduction = "fdl.old", group.by = "src",order = TRUE)
-# pp4 <- r_dim_plot(pt_mets_tumor, reduction = "fdl.old", group.by = "method", order = TRUE)
-# (pp1 | pp2) / (pp3 | pp4)
-
-p4 <- r_dim_plot(pt_mets_tumor, reduction = "fdl", order = TRUE)
+p4 <- r_dim_plot(pt_mets_tumor, reduction = "fdl", order = TRUE) +
+  labs(title = "Patient Lung Mets")
 p4
 
 p8 <- FeaturePlot(pt_mets_tumor,
   "IL1R1",
   reduction = "fdl",
-  cols = c("#EEEEEE", "#ae0600"),
-  min.cutoff = 2,
-  max.cutoff = 4,
   pt.size = 1,
   order = TRUE) +
-  coord_fixed()
+  coord_fixed() +
+  il1_scale
 p8
 
 qs::qsave(pt_mets_tumor, "output/seurat_objects/pt_mets_tumor.qs")
@@ -405,5 +339,55 @@ stash_plot(p, "Hetero-3")
 
 
 ```{r}
+pdx_tibia <- qs::qread("output/seurat_objects/pdx_tibia.qs")
+pdx_lungs <- qs::qread("output/seurat_objects/pdx_lungs.qs")
+primaries <- qs::qread("output/seurat_objects/primaries.qs")
+pt_mets_tumor <- qs::qread("output/seurat_objects/pt_mets_tumor.qs")
 
+```
+
+Brute force optimization of harmony parameters:
+ 
+Ever find yourself banging your head against the wall trying to find the right combination of parameters that will make your samples magically meld into a beautiful orchestra of colorful dots?
+ 
+Here's a solution that finally worked for me...just test all the possible combinations:
+```{r}
+hopts <- tibble(
+  theta = c(0.5, 1, 2, 4, 8),
+  sigma = c(.01, .03, .1, .3, 1),
+  lambda = c(.1, .3, 1, 3, 10)
+)
+hopts <- expand.grid(hopts$theta, hopts$sigma, hopts$lambda) %>%
+  setNames(colnames(hopts))
+results <- parallel::mclapply(1:nrow(hopts), function(i) {
+  sobj <- pt_mets_tumor %>%
+    harmony::RunHarmony("id",
+      dims.use = 1:50,
+      theta = hopts$theta[i],
+      sigma = hopts$sigma[i],
+      lambda = hopts$lambda[i]) %>%
+    RunUMAP(dims = 1:50, reduction = "harmony") %>%
+    FindNeighbors(reduction = "harmony") %>%
+    FindClusters(resolution = 0.4)
+  return(
+    r_dim_plot(sobj, 
+      group.by = "id",
+      order = TRUE,
+      ) +
+      ggtitle(paste0(
+        "Theta ",
+        hopts$theta[i],
+        ", Sigma ",
+        hopts$sigma[i],
+        ", Lambda ",
+        hopts$lambda[i]
+      ))
+  )
+}, mc.cores = parallelly::availableCores())
+format(object.size(results), "Gb")
+patchwork::wrap_plots(results[1:25], ncol = 5)
+patchwork::wrap_plots(results[26:50], ncol = 5)
+patchwork::wrap_plots(results[51:75], ncol = 5)
+patchwork::wrap_plots(results[76:100], ncol = 5)
+patchwork::wrap_plots(results[101:125], ncol = 5)
 ```
