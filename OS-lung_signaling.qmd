@@ -24,6 +24,8 @@ knitr:
 lightbox: true
 ---
 
+# Setup environment
+
 ```{r setup, eval=TRUE}
 #| include: FALSE
 library(tidyverse)
@@ -39,15 +41,6 @@ if(Sys.info()['sysname'] == "Windows") {
   plan(multicore)
 }
 options(future.globals.maxSize = 10000 * 1024^2)
-```
-
-
-## Check required software is available
-```{r h5_check, eval=TRUE}
-#| cache: false
-hdf5_check()
-
-seurat_version_check()
 ```
 
 # Download and organize the public data used in this analysis
