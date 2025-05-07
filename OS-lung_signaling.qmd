@@ -24,7 +24,7 @@ knitr:
 lightbox: true
 ---
 
-```{r setup, eval=true}
+```{r setup, eval=TRUE}
 #| include: FALSE
 library(tidyverse)
 library(rrrSingleCellUtils)
@@ -43,7 +43,7 @@ options(future.globals.maxSize = 10000 * 1024^2)
 
 
 ## Check required software is available
-```{r h5_check, eval=true}
+```{r h5_check, eval=TRUE}
 #| cache: false
 hdf5_check()
 
@@ -71,6 +71,6 @@ Here, we evaluate the same transcriptional data for evidence of IL1-driven tumor
 
 
 # Session info
-```{r session_info}
+```{r session_info, eval=TRUE}
 sessionInfo()
 ```

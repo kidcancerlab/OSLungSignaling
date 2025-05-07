@@ -342,7 +342,7 @@ stash_plot(p, "Hetero-3")
 # Brute force optimization of harmony parameters:
  
 Ever find yourself banging your head against the wall trying to find the right combination of parameters that will make your samples magically meld into a beautiful orchestra of colorful dots?
-```{r load_sobjs, eval=false}
+```{r load_sobjs, eval=FALSE}
 pdx_tibia <- qs::qread("output/seurat_objects/pdx_tibia.qs")
 pdx_lungs <- qs::qread("output/seurat_objects/pdx_lungs.qs")
 primaries <- qs::qread("output/seurat_objects/primaries.qs")
@@ -351,7 +351,7 @@ pt_mets_tumor <- qs::qread("output/seurat_objects/pt_mets_tumor.qs")
 ```
  
 Here's a solution that finally worked for me...just test all the possible combinations:
-```{r brute_force_optimization, eval = false}
+```{r brute_force_optimization, eval=FALSE}
 hopts <- tibble(
   theta = c(0.5, 1, 2, 4, 8),
   sigma = c(.01, .03, .1, .3, 1),
