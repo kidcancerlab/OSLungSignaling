@@ -53,8 +53,8 @@ rm(tumor_cocx)
 
 ### Load human met scRNA-seq and create Seurat objects
 ```{r human_met_expression, eval=TRUE}
-pre_path <- "~/../lab/Counts_2/"
-# pre_path <- "C:/Users/rxr014/OneDrive - Nationwide Children's Hospital/BIScratch/"
+# pre_path <- "~/../lab/Counts_2/"
+pre_path <- "C:/Users/rxr014/OneDrive - Nationwide Children's Hospital/BIScratch/"
 post_path <- "/filtered_feature_bc_matrix"
 
 deets_mets <- tribble(
