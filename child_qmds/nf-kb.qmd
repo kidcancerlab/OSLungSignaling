@@ -1,7 +1,7 @@
 ## Evaluate pathways downstream of IL1 (NF-kB)
 
 ### Evaluate cell cycle and NF-kB - PDX Tibia
-```{r}
+```{r nfkb-pdx_tibia, eval=TRUE}
 # Load the dataset
 pdx_tibia <- qs::qread("output/seurat_objects/pdx_tibia.qs")
 
@@ -50,7 +50,7 @@ p1
 ```
 
 ### Evaluate cell cycle and NF-kB - PDX Lung Mets
-```{r}
+```{r nfkb-pdx_mets, eval=TRUE}
 # Load the dataset
 pdx_lungs <- qs::qread("output/seurat_objects/pdx_lungs.qs")
 
@@ -83,7 +83,7 @@ p2
 ```
 
 ### Evaluate cell cycle and NF-kB - Patient Primaries
-```{r}
+```{r nfkb-pt_primaries, eval=TRUE}
 # Load the dataset
 primaries <- qs::qread("output/seurat_objects/primaries.qs")
 
@@ -116,7 +116,7 @@ p3
 ```
 
 ### Evaluate cell cycle and NF-kB - PDX Lung Mets
-```{r}
+```{r nfkb-pt_mets, eval=TRUE}
 # Load the dataset
 pt_mets_tumor <- qs::qread("output/seurat_objects/pt_mets_tumor.qs")
 
@@ -149,7 +149,7 @@ p4
 ```
 
 ### Assemble the figure panel
-```{r}
+```{r assembly, eval=TRUE}
 p <- (p1 | p2 | p3 | p4) / (p5 | p6 | p7 | p8)
 p
 stash_plot(p, "NFkB")

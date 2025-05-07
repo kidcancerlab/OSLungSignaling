@@ -1,7 +1,7 @@
 ## Heterogeneity analysis
 
 ### Isolate the co-culture tumor and evaluate IL6 and CXCL8 expression
-```{r}
+```{r cocx_expression, eval=TRUE}
 # Load the processed culture data
 cx <- qs::qread("output/seurat_objects/cx.qs")
 tumor_cocx <- subset(cx, idents = "OS-CoCx")
@@ -52,7 +52,7 @@ rm(tumor_cocx)
 ```
 
 ### Load human met scRNA-seq and create Seurat objects
-```{r}
+```{r human_met_expression, eval=TRUE}
 pre_path <- "~/../lab/Counts_2/"
 # pre_path <- "C:/Users/rxr014/OneDrive - Nationwide Children's Hospital/BIScratch/"
 post_path <- "/filtered_feature_bc_matrix"
@@ -128,7 +128,7 @@ rm(mets)
 ```
 
 ### Intratumoral Heterogeneity - PDX Primary 
-```{r}
+```{r het-pdx_primary, eval=TRUE}
 samples <- tribble(
   ~id, ~model, ~mt_cutoff, ~count_cutoff, ~species,
   "S0037", "OS-17", 25, 160000, "^GRCh38-"
@@ -189,7 +189,7 @@ rm(pdx_tibia)
 ```
 
 ### Intratumoral Heterogeneity - PDX Lung Met 
-```{r}
+```{r het-pdx_met, eval=TRUE}
 samples <- tribble(
   ~id, ~model, ~mt_cutoff, ~count_cutoff, ~species,
   "S0281", "OS-17", 25, 160000, "^GRCh38-"
@@ -241,7 +241,7 @@ rm(pdx_lungs)
 ```
 
 ### Intratumoral Heterogeneity - Patient Primary
-```{r}
+```{r het-pt_primary, eval=TRUE}
 tumor_cells <- qs::qread("misc/human_os_annotations.qs") %>%
   row.names()
 
@@ -277,7 +277,7 @@ rm(primaries)
 ```
 
 ### Intratumoral Heterogeneity - Patient Lung Met
-```{r}
+```{r het-pt_mets, eval=TRUE}
 # Load tumor cells from the pre-processed patient data
 # https://doi.org/10.1158/1078-0432.ccr-24-0049
 pt_mets_1 <- qs::qread("public/integrated_lungs.qs") %>%
@@ -331,7 +331,7 @@ rm(pt_mets_tumor)
 ```
 
 ### Assemble the figure panel
-```{r}
+```{r assemble, eval=TRUE}
 p <- (p1 | p2 | p3 | p4) / (p5 | p6 | p7 | p8)
 p
 stash_plot(p, "Hetero-3")
@@ -342,7 +342,7 @@ stash_plot(p, "Hetero-3")
 # Brute force optimization of harmony parameters:
  
 Ever find yourself banging your head against the wall trying to find the right combination of parameters that will make your samples magically meld into a beautiful orchestra of colorful dots?
-```{r}
+```{r load_sobjs, eval=false}
 pdx_tibia <- qs::qread("output/seurat_objects/pdx_tibia.qs")
 pdx_lungs <- qs::qread("output/seurat_objects/pdx_lungs.qs")
 primaries <- qs::qread("output/seurat_objects/primaries.qs")
@@ -351,7 +351,7 @@ pt_mets_tumor <- qs::qread("output/seurat_objects/pt_mets_tumor.qs")
 ```
  
 Here's a solution that finally worked for me...just test all the possible combinations:
-```{r}
+```{r brute_force_optimization, eval = false}
 hopts <- tibble(
   theta = c(0.5, 1, 2, 4, 8),
   sigma = c(.01, .03, .1, .3, 1),

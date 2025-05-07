@@ -37,7 +37,7 @@ Which signals produced by lung epithelial cells elicit the transcriptional chang
 In NicheNET, define the target gene set by DEG analysis comparing osteosarcoma cells in co-culture to cultured alone.
 Define senders as the epithelial cells and receivers as the osteosarcoma cells.
 
-```{r, eval=TRUE}
+```{r cocx_nichenet, eval=TRUE}
 cx <- merge(
     cocx$S0001,
     y = cocx$S0005,
@@ -99,7 +99,7 @@ stash_plot(p, "Nichenet_targets")
 
 ### Evaluate changes in the production of ligands with co-culture
 
-```{r}
+```{r cocx_dotplot, eval=TRUE}
 ligands <- c(
     "TGFB1",
     "IL1A",

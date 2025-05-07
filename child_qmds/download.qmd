@@ -4,7 +4,7 @@ If not already done, download the data sets from the GEO repository, extract
 matrices, import into a Seurat object, perform initial QC and append relevant
 clinical data for each sample, as reported in the manuscript.
 
-```{r}
+```{r download, eval=TRUE}
 # Make a list of sample names
 geo1 <- tibble(
   name = c("X00003", "X00004", "X00005", "X00006", "X00007", "X00008",
