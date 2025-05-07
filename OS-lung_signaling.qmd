@@ -24,7 +24,7 @@ knitr:
 lightbox: true
 ---
 
-```{r setup}
+```{r setup, eval=true}
 #| include: FALSE
 library(tidyverse)
 library(rrrSingleCellUtils)
@@ -43,13 +43,16 @@ options(future.globals.maxSize = 10000 * 1024^2)
 
 
 ## Check required software is available
-```{r h5_check}
+```{r h5_check, eval=true}
 #| cache: false
 hdf5_check()
 
 seurat_version_check()
 ```
 
+# Download and organize the public data used in this analysis
+
+{{< include child_qmds/download.qmd >}}
 
 # Co-culture experiments and NicheNET analysis
 This script is organized generally into a series of subscripts that will process the raw data to generate figure panels as they are organized in the manuscript. The first of these will pull data from cell culture data--tumor cells and lung epithelial cells cultured either alone or together. This data will facilitate a ligand-receptor-target analysis designed to identify the mediators of the host-to-tumor interaction.
