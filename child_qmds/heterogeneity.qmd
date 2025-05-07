@@ -279,7 +279,7 @@ rm(primaries)
 ### Intratumoral Heterogeneity - Patient Lung Met
 ```{r}
 # Load tumor cells from the pre-processed patient data
-# ***doi of fibrosis paper
+# https://doi.org/10.1158/1078-0432.ccr-24-0049
 pt_mets_1 <- qs::qread("public/integrated_lungs.qs") %>%
   subset(subset = met_labels == "Tumor") %>%
   subset(subset = method == "cell")
