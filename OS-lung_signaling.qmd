@@ -1,0 +1,69 @@
+---
+title: "Tumor-osteosarcoma interactions during metastatic colonization of the lung"
+author: "Ryan Roberts, Matthew Cannon, James Reinecke"
+date: "`r format(Sys.time(), '%m/%d/%Y')`"
+format:
+    html:
+        toc: true
+        toc_float: true
+        toc_depth: 5
+        number_sections: false
+        code-fold: true
+        code-link: true
+        df-print: kable
+        embed-resources: true
+        self_contained: true
+execute:
+    cache: true
+knitr:
+    opts_chunk:
+        cache.lazy: false
+        cache.vars: ""
+        warning: false
+        message: false
+lightbox: true
+---
+
+# Setup environment
+
+```{r setup, eval=TRUE}
+#| include: FALSE
+library(tidyverse)
+library(rrrSingleCellUtils)
+library(Seurat)
+library(stashPlot)
+
+library(future)
+library(future.apply)
+if(Sys.info()['sysname'] == "Windows") {
+  plan(multisession, workers = 5)
+} else {
+  plan(multicore)
+}
+options(future.globals.maxSize = 10000 * 1024^2)
+```
+
+# Download and organize the public data used in this analysis
+
+{{< include child_qmds/download.qmd >}}
+
+# Co-culture experiments and NicheNET analysis
+This script is organized generally into a series of subscripts that will process the raw data to generate figure panels as they are organized in the manuscript. The first of these will pull data from cell culture data--tumor cells and lung epithelial cells cultured either alone or together. This data will facilitate a ligand-receptor-target analysis designed to identify the mediators of the host-to-tumor interaction.
+
+{{< include child_qmds/nichenet.qmd >}}
+
+# Evaluate intratumoral heterogeneity in relation to paracrine signals
+This script assesses patterns of gene expression within tumor cell subpopulations isolated from PDX models and human patients.
+
+{{< include child_qmds/heterogeneity.qmd >}}
+
+# IL1-related activity within tumor cells
+Here, we evaluate the same transcriptional data for evidence of IL1-driven tumor cell activation, as evidenced by signatures of NF-kB signaling.
+
+{{< include child_qmds/nf-kb.qmd >}}
+
+
+# Session info
+```{r session_info, eval=TRUE}
+sessionInfo()
+```

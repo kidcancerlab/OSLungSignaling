@@ -1,0 +1,133 @@
+## NicheNET analysis 
+Starting with tumor (OS-17) and lung (HBEC) cells cultured either as monocultures or co-cultures, leverage the NicheNET algorithm to ask the question:
+
+What ligands produced by epithelial cells
+would bind receptors in osteosarcoma cells
+to cause the target gene changes that are observed in the co-culture?
+
+### Load and organize the co-culture data
+
+```{r , eval=TRUE}
+# scrna_path <- "../../../Counts_2/"
+scrna_path <- "C:/Users/rxr014/OneDrive - Nationwide Children's Hospital/BIScratch/"
+
+deets_cocx <- tribble(
+    ~id, ~max_count, ~max_percent_mt, ~file,
+    "S0001", 16000, 14, "S0001",
+    "S0005", 16000, 14, "S0005")
+
+cocx <- future_lapply(seq_len(nrow(deets_cocx)), function(i) {
+    test <- tenx_load_qc(paste0(scrna_path,
+                        deets_cocx$file[i],
+                        "/filtered_feature_bc_matrix/"),
+                 violin_plot = FALSE) %>%
+        subset(nCount_RNA < deets_cocx$max_count[i] &
+                   percent.mt < deets_cocx$max_percent_mt[i]) %>%
+        process_seurat()
+})
+
+names(cocx) <- deets_cocx$id
+for (i in seq_along(cocx)) {
+    cocx[[i]]$src <- deets_cocx$id[i]
+}
+```
+
+### Intercellular signaling analysis on co-culture data
+Which signals produced by lung epithelial cells elicit the transcriptional changes that we see in osteosarcoma cells in co-culture?
+In NicheNET, define the target gene set by DEG analysis comparing osteosarcoma cells in co-culture to cultured alone.
+Define senders as the epithelial cells and receivers as the osteosarcoma cells.
+
+```{r cocx_nichenet, eval=TRUE}
+cx <- merge(
+    cocx$S0001,
+    y = cocx$S0005,
+    add.cell.ids = c("monocx", "cocx"),
+    project = "InterSignaling") %>%
+    JoinLayers()
+
+cx <- process_seurat(cx, resolution  = 0.4)
+
+p1 <- r_dim_plot(cx,
+    group.by = "src",
+    title = "Source")
+p2 <- r_dim_plot(cx, "Clusters")
+p3 <- r_feature_plot(cx, features = "KRT19", title = "KRT19")
+p4 <- r_feature_plot(cx, features = "COL1A1", title = "COL1A1")
+
+p <- p1 | p2 | p3 | p4
+p
+stash_plot(p, "Co-culture")
+
+# Suspect that clusters 7 and 8 are groups of doublets, remove
+cx <- subset(cx, idents = c(7, 8), invert = T)
+
+cx <- RenameIdents(cx,
+    `5` = "OS-MonoCx",
+    `1` = "OS-CoCx", `6` = "OS-CoCx",
+    `0` = "HBEC-CoCx", `3` = "HBEC-CoCx", `4` = "HBEC-CoCx",
+    `2` = "HBEC-MonoCx")
+
+p <- r_dim_plot(cx, title = "OS-17 + HBEC, assignment")
+p
+stash_plot(p, "CoCx_assignments")
+
+# Save off the processed Seurat object
+qs::qsave(cx, "output/seurat_objects/cx.qs")
+
+target_genes <- find_tar_genes(cx,
+    id1 = "OS-CoCx",
+    id2 = "OS-MonoCx",
+    logfc = 2)
+
+LRT_analysis_1 <- find_ligands(cx,
+    target_genes,
+    senders = c("HBEC-CoCx", "HBEC-MonoCx"),
+    receiver = c("OS-CoCx", "OS-MonoCx"),
+    rec_pct = 0.07,
+    stringency = "strict")
+
+p <- plot_complex_heatmap(LRT_analysis_1,
+    grid_color_high = "#004466")
+p
+stash_plot(p, "Nichenet_heatmap")
+
+p <- LRT_analysis_1[[3]] +
+    scale_fill_gradient(low = "gray98", high = "#006600")
+p
+stash_plot(p, "Nichenet_targets")
+```
+
+### Evaluate changes in the production of ligands with co-culture
+
+```{r cocx_dotplot, eval=TRUE}
+ligands <- c(
+    "TGFB1",
+    "IL1A",
+    "GMFB",
+    "MMP9",
+    "IL6",
+    "CXCL8",
+    "ADAM17",
+    "HBEGF",
+    "GAS6",
+    "SAA1",
+    "YARS",
+    "PTHLH",
+    "TGFA"
+)
+
+cx$assignment <- Idents(cx)
+cx$assignment <- cx$assignment %>%
+    factor(levels = c(
+        "HBEC-MonoCx",
+        "HBEC-CoCx",
+        "OS-MonoCx",
+        "OS-CoCx"
+    ))
+
+p <- DotPlot(cx, ligands, cols = "RdYlBu", group.by = "assignment") +
+    coord_flip() +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+p
+stash_plot(p, "Co-cx_dotplot")
+```

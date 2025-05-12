@@ -1,0 +1,393 @@
+## Heterogeneity analysis
+
+### Isolate the co-culture tumor and evaluate IL6 and CXCL8 expression
+```{r cocx_expression, eval=TRUE}
+# Load the processed culture data
+cx <- qs::qread("output/seurat_objects/cx.qs")
+tumor_cocx <- subset(cx, idents = "OS-CoCx")
+
+# Remove the doublets that express epithelial markers
+tumor_cocx <- subset(tumor_cocx, cells = readRDS("misc/doublets.rds"), invert = T)
+
+tumor_cocx <- tumor_cocx %>%
+    FindVariableFeatures() %>%
+    RunPCA() %>%
+    RunUMAP(
+        dims = 1:20,
+        n.neighbors = 20,
+        min.dist = 0.1,
+        local.connectivity = 5,
+        spread = 1,
+        verbose = FALSE) %>%
+    FindNeighbors(verbose = FALSE) %>%
+    FindClusters(verbose = FALSE, resolution = 0.25)
+
+p1 <- r_dim_plot(tumor_cocx,
+    title = "Tumor in Co-culture")
+p2 <- DimPlot(tumor_cocx,
+        cells.highlight = WhichCells(tumor_cocx, expression = IL6 > 3),
+        cols.highlight = "#1F00B8",
+        pt.size = 1) +
+    labs(title = "IL6 Expression >3") +
+    theme(legend.position = "none") +
+    coord_fixed()
+p3 <- DimPlot(tumor_cocx,
+        cells.highlight = WhichCells(tumor_cocx, expression = CXCL8 > 6),
+        cols.highlight = "#1F00B8",
+        pt.size = 1) +
+    labs(title = "CXCL8 Expression >6") +
+    theme(legend.position = "none") +
+    coord_fixed()
+p4 <- r_feature_plot(tumor_cocx,
+    "nCount_RNA",
+    title = "Total Counts",
+    max.cutoff = 12000)
+
+p <- p1 | p2 | p3 | p4
+p
+stash_plot(p, "Hetero-1")
+
+qs::qsave(tumor_cocx, "output/seurat_objects/tumor_cocx.qs")
+rm(tumor_cocx)
+```
+
+### Load human met scRNA-seq and create Seurat objects
+```{r human_met_expression, eval=TRUE}
+# pre_path <- "~/../lab/Counts_2/"
+pre_path <- "C:/Users/rxr014/OneDrive - Nationwide Children's Hospital/BIScratch/"
+post_path <- "/filtered_feature_bc_matrix"
+
+deets_mets <- tribble(
+    ~id, ~max_count, ~max_percent_mt, ~src,
+    "S0058", 50000, 14, "met-1",
+    "S0059", 50000, 14, "met-2")
+
+mets <- future_lapply(seq_len(nrow(deets_mets)), function(i) {
+    s <- tenx_load_qc(paste0(pre_path,
+                deets_mets$id[i],
+                "/filtered_feature_bc_matrix/"),
+            violin_plot = FALSE) %>%
+        subset(
+            nCount_RNA < deets_mets$max_count[i] &
+            percent.mt < deets_mets$max_percent_mt[i]) %>%
+        process_seurat()
+})
+names(mets) <- deets_mets$id
+for (i in seq_along(mets)) {
+    mets[[i]]$src <- deets_mets$src[i]
+}
+
+mets <- merge(mets[[1]], mets[[2:length(mets)]],
+    add.cell.ids = deets_mets$id) %>%
+    process_seurat()
+mets$tumor <- "stroma"
+mets$tumor[names(mets$tumor) %in% readRDS("misc/tumor_cells.rds")] <- "tumor"
+
+r_dim_plot(mets, "Merged human lung metastases")
+r_dim_plot(mets, group.by = "tumor", "Cells identified as tumor")
+
+mets_tumor <- subset(mets, tumor == "tumor") %>%
+    process_seurat()
+
+p1 <- r_dim_plot(mets_tumor, "Isolated tumor cells")
+p2 <- DimPlot(mets_tumor,
+        cells.highlight = WhichCells(mets_tumor, expression = IL6 > 0),
+        cols.highlight = "#1F00B8",
+        pt.size = 1) +
+    labs(title = "IL6") +
+    theme(legend.position = "none") +
+    coord_fixed()
+p3 <- DimPlot(mets_tumor,
+        cells.highlight = WhichCells(mets_tumor, expression = CXCL8 > 1),
+        cols.highlight = "#1F00B8",
+        pt.size = 1) +
+    labs(title = "CXCL8") +
+    theme(legend.position = "none") +
+    coord_fixed()
+p4 <- DimPlot(mets_tumor,
+        cells.highlight = WhichCells(mets_tumor, expression = MKI67 > 1),
+        cols.highlight = "#1F00B8",
+        pt.size = 1) +
+    labs(title = "MKI67") +
+    theme(legend.position = "none") +
+    coord_fixed()
+p5 <- DimPlot(mets_tumor,
+        cells.highlight = WhichCells(mets_tumor, expression = CDKN1A > 1.5),
+        cols.highlight = "#1F00B8",
+        pt.size = 1) +
+    labs(title = "CDKN1A") +
+    theme(legend.position = "none") +
+    coord_fixed()
+
+p <- p1 | p2 | p3 | p4 | p5
+p
+stash_plot(p, "Hetero-2")
+
+qs::qsave(mets, "output/seurat_objects/mets.qs")
+rm(mets)
+```
+
+### Intratumoral Heterogeneity - PDX Primary 
+```{r het-pdx_primary, eval=TRUE}
+samples <- tribble(
+  ~id, ~model, ~mt_cutoff, ~count_cutoff, ~species,
+  "S0037", "OS-17", 25, 160000, "^GRCh38-"
+)
+
+s <- 1
+pdx_tibia <- tenx_load_qc(
+    paste0(pre_path, samples$id[s], post_path),
+    species_pattern = samples$species[s],
+    violin_plot = FALSE
+  ) %>%
+  subset(
+    percent.mt < samples$mt_cutoff[s] &
+    nCount_RNA < samples$count_cutoff[s]
+  ) %>%
+  NormalizeData()
+pdx_tibia$id <- samples$id[s]
+pdx_tibia$model <- samples$model[s]
+
+pdx_tibia <- pdx_tibia %>%
+  FindVariableFeatures(nfeatures = 5000) %>%
+  ScaleData() %>%
+  RunPCA()
+
+pdx_tibia <- pdx_tibia %>%
+  FindNeighbors(reduction = "pca", k.param = 200L) %>%
+  FindClusters(resolution = 0.8) %>%
+  RunUMAP(reduction = "pca", dims = 1:30)
+
+r_dim_plot(pdx_tibia)
+
+pdx_tibia <- run_fdl(pdx_tibia)
+
+p1 <- r_dim_plot(pdx_tibia, reduction = "fdl") +
+  labs(title = "OS-17 Primary Tibia")
+p1
+
+# Set scale common to IL1R1 plots
+il1_scale <- scale_color_gradient(
+  limits = c(1, 4), 
+  # colors = c("#EEEEEE", "#AE0600"),
+  low = "#EEEEEE",
+  high = "#AE0600",
+  oob = scales::squish
+  )
+
+p5 <- FeaturePlot(pdx_tibia,
+  "IL1R1",
+  reduction = "fdl",
+  pt.size = 1,
+  order = TRUE) +
+  coord_fixed() +
+  il1_scale
+p5
+
+qs::qsave(pdx_tibia, "output/seurat_objects/pdx_tibia.qs")
+rm(pdx_tibia)
+```
+
+### Intratumoral Heterogeneity - PDX Lung Met 
+```{r het-pdx_met, eval=TRUE}
+samples <- tribble(
+  ~id, ~model, ~mt_cutoff, ~count_cutoff, ~species,
+  "S0281", "OS-17", 25, 160000, "^GRCh38-"
+)
+
+s <- 1
+pdx_lungs <- tenx_load_qc(
+    paste0(pre_path, samples$id[s], post_path),
+    species_pattern = samples$species[s],
+    violin_plot = FALSE
+  ) %>%
+  subset(
+    percent.mt < samples$mt_cutoff[s] &
+    nCount_RNA < samples$count_cutoff[s]
+  ) %>%
+  NormalizeData()
+pdx_lungs$id <- samples$id[s]
+pdx_lungs$model <- samples$model[s]
+
+pdx_lungs <- pdx_lungs %>%
+  FindVariableFeatures(nfeatures = 5000) %>%
+  ScaleData() %>%
+  RunPCA()
+
+pdx_lungs <- pdx_lungs %>%
+  FindNeighbors(reduction = "pca", k.param = 100L) %>%
+  FindClusters(resolution = 0.8) %>%
+  RunUMAP(reduction = "pca", dims = 1:30)
+
+r_dim_plot(pdx_lungs)
+
+pdx_lungs <- run_fdl(pdx_lungs)
+
+p2 <- r_dim_plot(pdx_lungs, reduction = "fdl") +
+  labs(title = "OS-17 Lung Mets")
+p2
+
+p6 <- FeaturePlot(pdx_lungs,
+  "IL1R1",
+  reduction = "fdl",
+  pt.size = 1,
+  order = TRUE) +
+  coord_fixed() +
+  il1_scale
+p6
+
+qs::qsave(pdx_lungs, "output/seurat_objects/pdx_lungs.qs")
+rm(pdx_lungs)
+```
+
+### Intratumoral Heterogeneity - Patient Primary
+```{r het-pt_primary, eval=TRUE}
+tumor_cells <- qs::qread("misc/human_os_annotations.qs") %>%
+  row.names()
+
+primaries <- qs::qread("output/seurat_objects/human_geo.qs") %>%
+  subset(subset = type == "Primary") %>%
+  subset(cells = tumor_cells) %>%
+  subset(downsample = 10000) %>%
+  FindVariableFeatures() %>%
+  ScaleData() %>%
+  RunPCA() %>%
+  harmony::RunHarmony("src") %>%
+  RunUMAP(dims = 1:30, reduction = "harmony") %>%
+  FindNeighbors(reduction = "harmony") %>%
+  FindClusters(resolution = 0.4)
+
+primaries <- run_fdl(primaries)
+
+p3 <- r_dim_plot(primaries, reduction = "fdl") +
+  labs(title = "Patient Primary Tumors")
+p3
+
+p7 <- FeaturePlot(primaries,
+  "IL1R1",
+  reduction = "fdl",
+  pt.size = 1,
+  order = TRUE) +
+  coord_fixed() +
+  il1_scale
+p7
+
+qs::qsave(primaries, "output/seurat_objects/primaries.qs")
+rm(primaries)
+```
+
+### Intratumoral Heterogeneity - Patient Lung Met
+```{r het-pt_mets, eval=TRUE}
+# Load tumor cells from the pre-processed patient data
+# https://doi.org/10.1158/1078-0432.ccr-24-0049
+pt_mets_1 <- qs::qread("public/integrated_lungs.qs") %>%
+  subset(subset = met_labels == "Tumor") %>%
+  subset(subset = method == "cell")
+
+# And from the GEO dataset downloaded in download.qmd
+pt_mets_2 <- qs::qread("output/seurat_objects/human_geo.qs") %>%
+  subset(subset = type == "Lung Met") %>%
+  subset(cells = tumor_cells)
+
+# Align key metadata
+pt_mets_2$id <- pt_mets_2$src
+pt_mets_2$src <- "Geo"
+pt_mets_2$method <- "cell"
+
+# Merge and downsample
+pt_mets_tumor <- merge(pt_mets_1, pt_mets_2) %>%
+  JoinLayers() %>%
+  subset(downsample = 1200) %>%
+  ScaleData() %>%
+  FindVariableFeatures(nfeatures = 5000) %>%
+  RunPCA()
+
+pt_mets_tumor <- pt_mets_tumor %>%
+  harmony::RunHarmony(c("id"),
+    dims.use = 1:50,
+    theta = 8,
+    sigma = .1,
+    lambda = .3) %>%
+  RunUMAP(dims = 1:50, reduction = "harmony") %>%
+  FindNeighbors(reduction = "harmony") %>%
+  FindClusters(resolution = 0.4) %>%
+  run_fdl()
+
+p4 <- r_dim_plot(pt_mets_tumor, reduction = "fdl", order = TRUE) +
+  labs(title = "Patient Lung Mets")
+p4
+
+p8 <- FeaturePlot(pt_mets_tumor,
+  "IL1R1",
+  reduction = "fdl",
+  pt.size = 1,
+  order = TRUE) +
+  coord_fixed() +
+  il1_scale
+p8
+
+qs::qsave(pt_mets_tumor, "output/seurat_objects/pt_mets_tumor.qs")
+rm(pt_mets_tumor)
+```
+
+### Assemble the figure panel
+```{r assemble, eval=TRUE}
+p <- (p1 | p2 | p3 | p4) / (p5 | p6 | p7 | p8)
+p
+stash_plot(p, "Hetero-3")
+```
+
+
+
+# Brute force optimization of harmony parameters:
+ 
+Ever find yourself banging your head against the wall trying to find the right combination of parameters that will make your samples magically meld into a beautiful orchestra of colorful dots?
+```{r load_sobjs, eval=FALSE}
+pdx_tibia <- qs::qread("output/seurat_objects/pdx_tibia.qs")
+pdx_lungs <- qs::qread("output/seurat_objects/pdx_lungs.qs")
+primaries <- qs::qread("output/seurat_objects/primaries.qs")
+pt_mets_tumor <- qs::qread("output/seurat_objects/pt_mets_tumor.qs")
+
+```
+ 
+Here's a solution that finally worked for me...just test all the possible combinations:
+```{r brute_force_optimization, eval=FALSE}
+hopts <- tibble(
+  theta = c(0.5, 1, 2, 4, 8),
+  sigma = c(.01, .03, .1, .3, 1),
+  lambda = c(.1, .3, 1, 3, 10)
+)
+hopts <- expand.grid(hopts$theta, hopts$sigma, hopts$lambda) %>%
+  setNames(colnames(hopts))
+results <- parallel::mclapply(1:nrow(hopts), function(i) {
+  sobj <- pt_mets_tumor %>%
+    harmony::RunHarmony("id",
+      dims.use = 1:50,
+      theta = hopts$theta[i],
+      sigma = hopts$sigma[i],
+      lambda = hopts$lambda[i]) %>%
+    RunUMAP(dims = 1:50, reduction = "harmony") %>%
+    FindNeighbors(reduction = "harmony") %>%
+    FindClusters(resolution = 0.4)
+  return(
+    r_dim_plot(sobj, 
+      group.by = "id",
+      order = TRUE,
+      ) +
+      ggtitle(paste0(
+        "Theta ",
+        hopts$theta[i],
+        ", Sigma ",
+        hopts$sigma[i],
+        ", Lambda ",
+        hopts$lambda[i]
+      ))
+  )
+}, mc.cores = parallelly::availableCores())
+format(object.size(results), "Gb")
+patchwork::wrap_plots(results[1:25], ncol = 5)
+patchwork::wrap_plots(results[26:50], ncol = 5)
+patchwork::wrap_plots(results[51:75], ncol = 5)
+patchwork::wrap_plots(results[76:100], ncol = 5)
+patchwork::wrap_plots(results[101:125], ncol = 5)
+```

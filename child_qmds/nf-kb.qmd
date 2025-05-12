@@ -1,0 +1,156 @@
+## Evaluate pathways downstream of IL1 (NF-kB)
+
+### Evaluate cell cycle and NF-kB - PDX Tibia
+```{r nfkb-pdx_tibia, eval=TRUE}
+# Load the dataset
+pdx_tibia <- qs::qread("output/seurat_objects/pdx_tibia.qs")
+
+# Determine cell cycle phase for each cell and plot
+pdx_tibia <- kill_cc(pdx_tibia)
+
+p5 <- r_dim_plot(pdx_tibia,
+    reduction = "fdl",
+    group.by = "Phase",
+    label = FALSE) +
+  labs(title = "OS-17 Primary Tibia - Cell Cycle") +
+  theme(legend.position = "right")
+p5
+
+# Pull the transcription-factor regulated gene sets from msigdb
+sigs <- msigdbr::msigdbr(species = "Homo sapiens",
+    category = "H") %>%
+  select(gs_name, gene_symbol)
+
+gs <- "HALLMARK_TNFA_SIGNALING_VIA_NFKB"
+
+# Quantify the NF-kB pathway activity and plot
+cell_ranks <- AUCell::AUCell_run(
+  pdx_tibia[["RNA"]]$counts,
+  sigs %>% filter(gs_name == gs) %>% pull(gene_symbol)
+)
+pdx_tibia$nfkb_activity <- AUCell::getAUC(cell_ranks)[1,]
+
+# Set scale common to IL1R1 plots
+nfkb_scale <- scale_color_gradient(
+  limits = c(0.1, 0.35), 
+  # colors = c("#EEEEEE", "#AE0600"),
+  low = "#EEEEEE",
+  high = "#AE0600",
+  oob = scales::squish
+  )
+
+p1 <- FeaturePlot(pdx_tibia,
+  "nfkb_activity",
+  reduction = "fdl",
+  pt.size = 1,
+  order = TRUE) +
+  coord_fixed() +
+  nfkb_scale
+p1
+```
+
+### Evaluate cell cycle and NF-kB - PDX Lung Mets
+```{r nfkb-pdx_mets, eval=TRUE}
+# Load the dataset
+pdx_lungs <- qs::qread("output/seurat_objects/pdx_lungs.qs")
+
+# Determine cell cycle phase for each cell and plot
+pdx_lungs <- kill_cc(pdx_lungs)
+
+p6 <- r_dim_plot(pdx_lungs,
+    reduction = "fdl",
+    group.by = "Phase",
+    label = FALSE) +
+  labs(title = "OS-17 Lung Mets - Cell Cycle") +
+  theme(legend.position = "right")
+p6
+
+# Quantify the NF-kB pathway activity and plot
+cell_ranks <- AUCell::AUCell_run(
+  pdx_lungs[["RNA"]]$counts,
+  sigs %>% filter(gs_name == gs) %>% pull(gene_symbol)
+)
+pdx_lungs$nfkb_activity <- AUCell::getAUC(cell_ranks)[1,]
+
+p2 <- FeaturePlot(pdx_lungs,
+  "nfkb_activity",
+  reduction = "fdl",
+  pt.size = 1,
+  order = TRUE) +
+  coord_fixed() +
+  nfkb_scale
+p2
+```
+
+### Evaluate cell cycle and NF-kB - Patient Primaries
+```{r nfkb-pt_primaries, eval=TRUE}
+# Load the dataset
+primaries <- qs::qread("output/seurat_objects/primaries.qs")
+
+# Determine cell cycle phase for each cell and plot
+primaries <- kill_cc(primaries)
+
+p7 <- r_dim_plot(primaries,
+    reduction = "fdl",
+    group.by = "Phase",
+    label = FALSE) +
+  labs(title = "Patient Primary Tumors - Cell Cycle") +
+  theme(legend.position = "right")
+p7
+
+# Quantify the NF-kB pathway activity and plot
+cell_ranks <- AUCell::AUCell_run(
+  primaries[["RNA"]]$counts,
+  sigs %>% filter(gs_name == gs) %>% pull(gene_symbol)
+)
+primaries$nfkb_activity <- AUCell::getAUC(cell_ranks)[1,]
+
+p3 <- FeaturePlot(primaries,
+  "nfkb_activity",
+  reduction = "fdl",
+  pt.size = 1,
+  order = TRUE) +
+  coord_fixed() +
+  nfkb_scale
+p3
+```
+
+### Evaluate cell cycle and NF-kB - PDX Lung Mets
+```{r nfkb-pt_mets, eval=TRUE}
+# Load the dataset
+pt_mets_tumor <- qs::qread("output/seurat_objects/pt_mets_tumor.qs")
+
+# Determine cell cycle phase for each cell and plot
+pt_mets_tumor <- kill_cc(pt_mets_tumor)
+
+p8 <- r_dim_plot(pt_mets_tumor,
+    reduction = "fdl",
+    group.by = "Phase",
+    label = FALSE) +
+  labs(title = "Patient Lung Mets - Cell Cycle") +
+  theme(legend.position = "right")
+p8
+
+# Quantify the NF-kB pathway activity and plot
+cell_ranks <- AUCell::AUCell_run(
+  pt_mets_tumor[["RNA"]]$counts,
+  sigs %>% filter(gs_name == gs) %>% pull(gene_symbol)
+)
+pt_mets_tumor$nfkb_activity <- AUCell::getAUC(cell_ranks)[1,]
+
+p4 <- FeaturePlot(pt_mets_tumor,
+  "nfkb_activity",
+  reduction = "fdl",
+  pt.size = 1,
+  order = TRUE) +
+  coord_fixed() +
+  nfkb_scale
+p4
+```
+
+### Assemble the figure panel
+```{r assembly, eval=TRUE}
+p <- (p1 | p2 | p3 | p4) / (p5 | p6 | p7 | p8)
+p
+stash_plot(p, "NFkB")
+```
