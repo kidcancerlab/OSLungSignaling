@@ -1,0 +1,4 @@
+linters: all_linters(
+  indentation_linter = NULL
+  trailing_blank_lines_linter = NULL
+  ) # see vignette("lintr")

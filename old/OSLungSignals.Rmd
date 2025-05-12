@@ -2,7 +2,7 @@
 title: "Osteosarcoma - lung epithelial interactions"
 author: "Ryan Roberts"
 date: March 2022
-output: knitrBootstrap::bootstrap_document
+output: html_document
 ---
 
 ```{r setup, include=FALSE}
@@ -47,79 +47,28 @@ library(patchwork)
 
 ## Helper functions
 ```{r}
-process_seurat <- function(obj, ...) {
-    obj %>%
-        NormalizeData(verbose = FALSE) %>%
-        FindVariableFeatures(verbose = FALSE) %>%
-        ScaleData(verbose = FALSE) %>%
-        RunPCA(verbose = FALSE) %>%
-        RunUMAP(dims = 1:20, verbose = FALSE) %>%
-        FindNeighbors(verbose = FALSE) %>%
-        FindClusters(verbose = FALSE, resolution = 0.4, ...)
-}
-theme_set(theme_pubr())
-
-plot_cols <- c("#D43F3AFF", "#EEA236FF", "#357EBDFF", "#5CB85CFF", "#B8B8B8FF",
-  "#9632B8FF",  "#46B8DAFF", "#90302DFF", "#A66D04FF", "#2D577FFF", "#3E7E3EFF",
-  "#7D7D7DFF", "#6D1D87FF", "#097F9AFF", "#FF6E6AFF", "#FFBB70FF", "#68A4E3FF",
-  "#79D379FF", "#CDCDCDFF", "#BF6BE2FF", "#69D1F3FF")
-
-rDimPlot <- function(object, title = "Unlabeled Plot", subtitle = NULL,
-  label = T, pt.size = 1, ...) {
-  if(length(levels(Idents(object))) < 22) {
-    p <- Seurat::DimPlot(
-      object = object, 
-      label = label, 
-      pt.size = pt.size,
-      cols = alpha(plot_cols, 0.6),
-      ...) +
-      labs(title = title, subtitle = subtitle) +
-      theme(legend.position = "none") +
-      coord_fixed()
-    return(p)
-  } else {
-    print("Too many identity classes to use this function. Requires <22.")
-  }
-}
-
-rFeaturePlot <- function(object, features, title = "Unlabeled Plot", subtitle = NULL,
-  pt.size = 1, order = T, ...) {
-  p <- Seurat::FeaturePlot(
-    object = object,
-    features = features,
-    pt.size = pt.size,
-    order = order,
-    cols = (c("gray95", "#1F00B8")),
-    ...) +
-    labs(title = title, subtitle = subtitle) +
-    theme(plot.title = element_text(hjust = 0)) +
-    coord_fixed()
-  return(p)
-}
-
 set.seed(888)
 ```
 
 ## Load and organize co-culture data
 ```{r , eval=TRUE}
-scrna_path <- "D:/OneDrive - Nationwide Children's Hospital/BIScratch/"
+scrna_path <- "../../../Counts/"
 deets_cocx <- tribble(
-    ~id, ~max_count, ~max_percent_mt, ~src,
-    "S0001", 16000, 14, "mono-cx",
-    "S0005", 16000, 14, "co-cx")
+    ~id, ~max_count, ~max_percent_mt, ~file,
+    "S0001", 16000, 14, "S0001-mix/outs",
+    "S0005", 16000, 14, "S0005-CoCx-2/outs")
 
 cocx <- lapply(seq_len(nrow(deets_cocx)), function(i) {
-    s <- tenx_load_qc(paste0(scrna_path,
-                deets_cocx$id[i],
-                "/filtered_feature_bc_matrix/"),
-            violin_plot = FALSE) %>%
-        subset(
-            nCount_RNA < deets_cocx$max_count[i] &
-            percent.mt < deets_cocx$max_percent_mt[i]) %>%
+    test <- tenx_load_qc(paste0(scrna_path,
+                        deets_cocx$file[i],
+                        "/filtered_feature_bc_matrix/"),
+                 violin_plot = FALSE) %>%
+        subset(nCount_RNA < deets_cocx$max_count[i] &
+                   percent.mt < deets_cocx$max_percent_mt[i]) %>%
         process_seurat()
 })
 names(cocx) <- deets_cocx$id
-for(i in seq_along(cocx)) {
+for (i in seq_along(cocx)) {
     cocx[[i]]$src <- deets_cocx$src[i]
 }
 ```
@@ -136,16 +85,17 @@ cx <- merge(
     cocx$S0001,
     y = cocx$S0005,
     add.cell.ids = c("monocx", "cocx"),
-    project = "InterSignaling")
+    project = "InterSignaling") %>%
+    JoinLayers()
 
-cx <- process_seurat(cx)
+cx <- process_seurat(cx, resolution  = 0.4)
 
-fig_nichenet$umap_src <- rDimPlot(cx, 
+fig_nichenet$umap_src <- r_dim_plot(cx,
     group.by = "src",
     title = "OS-17 + HBEC, source")
-fig_nichenet$umap <- rDimPlot(cx, title = "OS-17 + HBEC, clusters")
-fig_nichenet$krt19 <- rFeaturePlot(cx, features = "KRT19", title = "KRT19")
-fig_nichenet$col1a1 <- rFeaturePlot(cx, features = "COL1A1", title = "COL1A1")
+fig_nichenet$umap <- r_dim_plot(cx, title = "OS-17 + HBEC, clusters")
+fig_nichenet$krt19 <- r_feature_plot(cx, features = "KRT19", title = "KRT19")
+fig_nichenet$col1a1 <- r_feature_plot(cx, features = "COL1A1", title = "COL1A1")
 
 # Suspect that cluster 9 is a group of doublets, remove
 cx <- subset(cx, idents = c(8, 9), invert = T)
@@ -156,7 +106,7 @@ cx <- RenameIdents(cx,
     `0` = "HBEC-CoCx", `2` = "HBEC-CoCx", `5` = "HBEC-CoCx",
     `3` = "HBEC-MonoCx", `6` = "HBEC-MonoCx")
 
-fig_nichenet$assign <- rDimPlot(cx, title = "OS-17 + HBEC, assignment")
+fig_nichenet$assign <- r_dim_plot(cx, title = "OS-17 + HBEC, assignment")
 
 target_genes <- find_tar_genes(cx,
     id1 = "OS-CoCx",
@@ -178,7 +128,7 @@ fig_nichenet$LR_plot <- LRT_analysis_1[[3]] +
 
 ## Assemble the panel for NicheNET analysis
 ```{r}
-p1 <- fig_nichenet$umap + fig_nichenet$umap_src + fig_nichenet$krt19 + 
+p1 <- fig_nichenet$umap + fig_nichenet$umap_src + fig_nichenet$krt19 +
     fig_nichenet$col1a1 + plot_layout(ncol = 4)
 p2 <- fig_nichenet$assign + fig_nichenet$LT_plot + plot_layout(widths = c(1, 3))
 nn_panel <- p1 / p2 / fig_nichenet$LR_plot
@@ -203,7 +153,7 @@ tumor_cocx <- RunUMAP(tumor_cocx,
     FindNeighbors(verbose = FALSE) %>%
     FindClusters(verbose = FALSE, resolution = 0.25)
 
-p1 <- rDimPlot(tumor_cocx,
+p1 <- r_dim_plot(tumor_cocx,
     title = "Tumor in Co-culture")
 p2 <- DimPlot(tumor_cocx,
         cells.highlight = WhichCells(tumor_cocx, expression = IL6 > 3),
@@ -219,7 +169,7 @@ p3 <- DimPlot(tumor_cocx,
     labs(title = "CXCL8 Expression >6") +
     theme(legend.position = "none") +
     coord_fixed()
-p4 <- rFeaturePlot(tumor_cocx,
+p4 <- r_feature_plot(tumor_cocx,
     "nCount_RNA",
     title = "Total Counts",
     max.cutoff = 12000)
@@ -247,19 +197,63 @@ mets <- lapply(seq_len(nrow(deets_mets)), function(i) {
 })
 
 names(mets) <- deets_mets$id
-for(i in seq_along(mets)) {
+for (i in seq_along(mets)) {
     mets[[i]]$src <- deets_mets$src[i]
 }
+
+tumor_cells <- readRDS("tumor_cells.rds")
+
+mets <- merge(mets[[1]], mets[[2:length(mets)]],
+    add.cell.ids = deets_mets$id) %>%
+    process_seurat()
+mets$tumor <- "stroma"
+mets$tumor[names(mets$tumor) %in% readRDS("tumor_cells.rds")] <- "tumor"
+
+r_dim_plot(mets, "Merged human lung metastases")
+r_dim_plot(mets, group.by = "tumor", "Cells identified as tumor")
+
+mets_tumor <- subset(mets, tumor == "tumor") %>%
+    process_seurat()
+
+p1 <- r_dim_plot(mets_tumor, "Isolated tumor cells")
+p2 <- DimPlot(mets_tumor,
+        cells.highlight = WhichCells(mets_tumor, expression = IL6 > 0),
+        cols.highlight = "#1F00B8",
+        pt.size = 1) +
+    labs(title = "IL6") +
+    theme(legend.position = "none") +
+    coord_fixed()
+p3 <- DimPlot(mets_tumor,
+        cells.highlight = WhichCells(mets_tumor, expression = CXCL8 > 1),
+        cols.highlight = "#1F00B8",
+        pt.size = 1) +
+    labs(title = "CXCL8") +
+    theme(legend.position = "none") +
+    coord_fixed()
+p4 <- DimPlot(mets_tumor,
+        cells.highlight = WhichCells(mets_tumor, expression = MKI67 > 1),
+        cols.highlight = "#1F00B8",
+        pt.size = 1) +
+    labs(title = "MKI67") +
+    theme(legend.position = "none") +
+    coord_fixed()
+p5 <- DimPlot(mets_tumor,
+        cells.highlight = WhichCells(mets_tumor, expression = CDKN1A > 1.5),
+        cols.highlight = "#1F00B8",
+        pt.size = 1) +
+    labs(title = "CDKN1A") +
+    theme(legend.position = "none") +
+    coord_fixed()
+p1 | p2 | p3 | p4 | p5
 ```
 
 ## Check for co-occurrence of IL6, CXCL8, p21, and Ki67 in human lung mets
 
 ```{r}
-
 tmets <- list()
-for(i in c("S0058", "S0059")){
-    rDimPlot(mets[[i]], title = paste(i, "Clusters"))
-    rFeaturePlot(mets[[i]], "IL6", title = paste(i, "COL1A1 Expression"))
+for (i in c("S0058", "S0059")) {
+    r_dim_plot(mets[[i]], title = paste(i, "Clusters"))
+    r_feature_plot(mets[[i]], "IL6", title = paste(i, "COL1A1 Expression"))
     DimPlot(mets[[i]],
             cells.highlight = WhichCells(mets[[i]], expression = IL6 > 1),
             cols.highlight = "#1F00B8",
@@ -269,13 +263,14 @@ for(i in c("S0058", "S0059")){
         coord_fixed()
 
     # Isolate the tumor cells (list previously generated)
-    tmets[[i]] <- subset(mets[[i]], 
-        cells = readRDS(paste0(i, "TumorCells.rds")))
+    # tmets[[i]] <- subset(mets[[i]],
+    #     cells = readRDS(paste0(i, "TumorCells.rds")))
 
-    tmets[[i]] <- process_seurat(tmets[[i]])
-    rDimPlot(tmets[[i]], title = paste(i, "Tumor Subclusters"))
-    rFeaturePlot(tmets[[i]], "IL6", title = paste(i, "IL6 Expression"))
-    rFeaturePlot(tmets[[i]], "CXCL8", title = paste(i, "CXCL8 Expression"))
+    # tmets[[i]] <- process_seurat(tmets[[i]])
+    tmets[[i]] <- mets[[i]]
+    r_dim_plot(tmets[[i]], title = paste(i, "Tumor Subclusters"))
+    r_feature_plot(tmets[[i]], "IL6", title = paste(i, "IL6 Expression"))
+    r_feature_plot(tmets[[i]], "CXCL8", title = paste(i, "CXCL8 Expression"))
     DimPlot(tmets[[i]],
             cells.highlight = WhichCells(tmets[[i]], expression = IL6 > 1),
             cols.highlight = "#1F00B8",
@@ -290,11 +285,11 @@ s <- c("counts", "data", "scale.data")
 p <- lapply(s, function(i) {
     t <- GetAssayData(tumor_cocx, slot = i) %>%
         as.data.frame() %>%
-        t() %>% 
+        t() %>%
         as.data.frame()
 
     return(
-        ggplot(t, aes(IL6, CXCL8)) +
+        ggplot(t, aes(IL6, CDKN1A)) +
             geom_point()
     )
 })
@@ -451,7 +446,7 @@ migration$cond_media$source <- tribble(
         "non-metastatic", "to_inhibitors")
 
 migration$cytokine$data <- lapply(
-    migration$cytokine$source$table_name, 
+    migration$cytokine$source$table_name,
     function(x) {
         as_tibble(read_pzfx(
             paste0(paper_path, "Figures for paper.xml"),
@@ -465,7 +460,7 @@ migration$cytokine$data <- lapply(
         mutate(condition =
             str_replace(condition, "^Media$", "Media") %>%
             str_replace("1% FBS", "FBS")) %>%
-        mutate(condition = factor(condition, 
+        mutate(condition = factor(condition,
             levels = c("Media", "FBS", "IL6", "IL8")))
     })
 names(migration$cytokine$data) <- migration$cytokine$source$cell_line
@@ -484,7 +479,7 @@ migration$cond_media$data <- lapply(
 )
         if (data_type == "to_cytokine") {
             dataset <- dataset %>%
-            
+
     } else if (data_type == "to_inhibitors") {
         dataset <- dataset %>%
             mutate(condition =
@@ -537,12 +532,12 @@ migration$cond_media$data <- lapply(
         ) +
         stat_summary(
             fun.data = mean_se,
-            geom = "errorbar", 
-            width = 0.3, 
+            geom = "errorbar",
+            width = 0.3,
             size = 1
         ) +
         stat_summary(
-            fun = mean, 
+            fun = mean,
             geom = "crossbar",
             width = 0.5,
             size = 0.5
@@ -582,4 +577,4 @@ migration$cond_media$data <- lapply(
 # Conclusions
 
 placeholder
- 
+

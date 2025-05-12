@@ -1,0 +1,154 @@
+---
+title: "Osteosarcoma - lung epithelial interactions"
+author: "Ryan Roberts"
+date: March 2022
+output: knitrBootstrap::bootstrap_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      cache = TRUE,
+                      fig.height = 10,
+                      fig.width = 20,
+                      dpi = 300,
+                      bootstrap.show.code = FALSE,
+                      bootstrap.show.output = FALSE,
+                      bootstrap.show.message = FALSE)
+```
+
+## Load libraries
+```{r libraries, cache=FALSE, eval=TRUE}
+library(tidyverse)
+library(rrrSingleCellUtils)
+library(Seurat)
+future::plan("multicore", workers = parallelly::availableCores())
+options(future.globals.maxSize = 3000 * 1024^2)
+```
+
+## Intratumoral Heterogeneity
+```{r}
+pre_path <- "~/../lab/Counts_2/"
+post_path <- "/filtered_feature_bc_matrix"
+samples <- tribble(
+  ~id, ~model, ~mt_cutoff, ~count_cutoff, ~species,
+  # "S0015", "OS-17", 18, 80000, "^GRCh38-",
+  "S0016", "OS-17", 18, 120000, "^GRCh38-"
+  # "S0056", "OS-17", 20, 90000, "^GRCh38-"
+)
+
+s <- 1
+pdx_lungs <- tenx_load_qc(
+    paste0(pre_path, samples$id[s], post_path),
+    species_pattern = samples$species[s],
+    violin_plot = FALSE
+  ) %>%
+  subset(
+    percent.mt < samples$mt_cutoff[s] &
+    nCount_RNA < samples$count_cutoff[s]
+  ) %>%
+  NormalizeData()
+pdx_lungs$id <- samples$id[s]
+pdx_lungs$model <- samples$model[s]
+
+pdx_lungs <- pdx_lungs %>%
+  FindVariableFeatures(nfeatures = 5000) %>%
+  ScaleData() %>%
+  RunPCA()
+
+pdx_lungs <- pdx_lungs %>%
+  FindNeighbors(reduction = "pca", k.param = 100L) %>%
+  FindClusters(resolution = 0.8) %>%
+  RunUMAP(reduction = "pca", dims = 1:30)
+
+r_dim_plot(pdx_lungs)
+
+g <- igraph::graph_from_adjacency_matrix(
+  adjmatrix = pdx_lungs@graphs$RNA_snn,
+  mode = "undirected",
+  weighted = TRUE,
+  add.colnames = TRUE)
+
+fdl <- igraph::layout_with_fr(g, grid = "nogrid")
+rownames(fdl) <- colnames(pdx_lungs)
+colnames(fdl) <- c("fdl_1", "fdl_2")
+
+pdx_lungs[["fdl"]] <- CreateDimReducObject(
+  embeddings = fdl,
+  key = "fdl_",
+  assay = DefaultAssay(pdx_lungs))
+
+r_dim_plot(pdx_lungs, reduction = "fdl")
+
+pdx_lungs <- kill_cc (pdx_lungs)
+
+r_dim_plot(pdx_lungs)
+Idents(pdx_lungs) <- pdx_lungs$seurat_clusters
+
+lungs_basal <- subset(pdx_lungs, idents = c(0, 2, 4, 8))
+lungs_basal_marks <- FindAllMarkers(lungs_basal)
+
+lungs_basal_marks %>%
+  filter(p_val_adj < 0.05 & pct.1 > 0.3) %>%
+  mutate(diff = pct.1 - pct.2) %>%
+  group_by(cluster) %>%
+  arrange(-diff) %>%
+  top_n(n = 30, wt = diff) %>%
+  gt::gt()
+
+r_feature_plot(pdx_lungs, c("PAX7", "FABP5", "SMOC1"), max.cutoff = 1.0, reduction = "fdl", ncol = 3)
+```
+
+## Test cell cycle regression
+```{r}
+pdx_lungs_cc <- pdx_lungs %>%
+  ScaleData(
+    vars.to.regress = c("S.Score", "G2M.Score"),
+    features = rownames(x = pdx_lungs)) %>%
+  RunPCA() %>%
+  FindNeighbors(reduction = "pca", k.param = 100L) %>%
+  FindClusters(resolution = 0.8) %>%
+  RunUMAP(reduction = "pca", dims = 1:30)
+
+r_dim_plot(pdx_lungs_cc, group.by = "Phase")
+
+g <- igraph::graph_from_adjacency_matrix(
+  adjmatrix = pdx_lungs_cc@graphs$RNA_snn,
+  mode = "undirected",
+  weighted = TRUE,
+  add.colnames = TRUE)
+
+fdl <- igraph::layout_with_fr(g, grid = "nogrid")
+rownames(fdl) <- colnames(pdx_lungs_cc)
+colnames(fdl) <- c("fdl_1", "fdl_2")
+
+pdx_lungs_cc[["fdl"]] <- CreateDimReducObject(
+  embeddings = fdl,
+  key = "fdl_",
+  assay = DefaultAssay(pdx_lungs_cc))
+
+r_dim_plot(pdx_lungs_cc, group.by = "seurat_clusters", reduction = "fdl")
+r_feature_plot(pdx_lungs_cc, "PAX7", reduction = "fdl")
+```
+
+## GSEA
+```{r}
+degs <- FindAllMarkers(pdx_lungs_cc) %>%
+  filter(p_val_adj < 0.05) %>%
+  arrange(-avg_log2FC)
+
+pathways <- mclapply(unique(degs$cluster), function(clust) {
+  genes <- degs %>%
+    filter(cluster == clust)
+
+  p <- clusterProfiler::gseGO(
+    geneList = genes,
+    OrgDb = org.Hs.eg.db::org.Hs.ed.db,
+    ont = "BP",
+    keyType = "SYMBOL",
+    nPermSimple = 10000,
+    eps = 0
+  )
+
+  return(p)
+}, mc.cores = parallelly::availableCores())
+```
